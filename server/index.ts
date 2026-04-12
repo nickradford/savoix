@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import { db } from "./db";
 import { segmentTakes } from "./schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import FormData from "form-data";
 import { handleDemo } from "./routes/demo";
 import { recordSegmentTake } from "./routes/transcription";
@@ -133,7 +133,9 @@ export function createServer() {
               transcription: data.text || "",
               confidence: 0.85,
               words: data.words ? JSON.stringify(data.words) : undefined,
-              segments: data.segments ? JSON.stringify(data.segments) : undefined,
+              segments: data.segments
+                ? JSON.stringify(data.segments)
+                : undefined,
               audioDuration: data.duration ?? undefined,
               duration: resolveTakeDurationMs(take.duration, data.duration),
             })
@@ -226,6 +228,54 @@ export function createServer() {
     } catch (error) {
       console.error("Error restoring take:", error);
       res.status(500).json({ error: "Failed to restore take" });
+    }
+  });
+
+  // Select/deselect take for export (only one selected take per segment)
+  app.post("/api/takes/:takeId/select", async (req, res) => {
+    try {
+      const { takeId } = req.params;
+      const { isSelected } = req.body as { isSelected?: boolean };
+
+      // Get the take to find its segment
+      const take = await db.query.segmentTakes.findFirst({
+        where: and(eq(segmentTakes.id, takeId), isNull(segmentTakes.deletedAt)),
+      });
+
+      if (!take) {
+        return res.status(404).json({ error: "Take not found" });
+      }
+
+      const targetSelected = isSelected ?? true;
+
+      if (targetSelected) {
+        // Deselect any other selected take for this segment
+        await db
+          .update(segmentTakes)
+          .set({ isSelected: false })
+          .where(
+            and(
+              eq(segmentTakes.segmentId, take.segmentId),
+              eq(segmentTakes.isSelected, true),
+              sql`${segmentTakes.id} != ${takeId}`,
+            ),
+          );
+      }
+
+      // Set the target take's selection state
+      await db
+        .update(segmentTakes)
+        .set({ isSelected: targetSelected })
+        .where(eq(segmentTakes.id, takeId));
+
+      const updatedTake = await db.query.segmentTakes.findFirst({
+        where: eq(segmentTakes.id, takeId),
+      });
+
+      res.json(updatedTake);
+    } catch (error) {
+      console.error("Error selecting take:", error);
+      res.status(500).json({ error: "Failed to select take" });
     }
   });
 

@@ -56,6 +56,9 @@ export const segmentTakes = sqliteTable("segment_takes", {
   audioDuration: real("audio_duration"),
   takeNumber: integer("take_number"),
   duration: integer("duration").notNull().default(0),
+  isSelected: integer("is_selected", { mode: "boolean" })
+    .notNull()
+    .default(false),
   deletedAt: text("deleted_at"),
   createdAt: text("created_at")
     .notNull()

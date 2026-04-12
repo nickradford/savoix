@@ -3,13 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Play,
-  Square,
+  Pause,
   Trash2,
   RotateCcw,
   ChevronUp,
   ChevronDown,
   AlertCircle,
   RefreshCw,
+  Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SegmentTake } from "@/hooks/useTakeManager";
@@ -36,6 +37,7 @@ interface TakeCardProps {
   onDelete: () => void;
   onRestore: () => void;
   onRetry: () => void;
+  onSelect?: (isSelected: boolean) => void;
   formatTime: (ms: number) => string;
   getTakeDurationMs: (
     take: Pick<SegmentTake, "audioDuration" | "duration">,
@@ -59,6 +61,7 @@ export function TakeCard({
   onDelete,
   onRestore,
   onRetry,
+  onSelect,
   formatTime,
   getTakeDurationMs,
   transcriptAlignment,
@@ -68,23 +71,35 @@ export function TakeCard({
   const isDeleted = !!take.deletedAt;
   const hasTranscription = !!take.transcription;
   const hasError = take.transcriptionError && !hasTranscription;
+  const isSelected = !!take.isSelected;
 
   return (
     <div
       className={cn(
-        "bg-card border rounded-lg overflow-hidden transition-all",
-        isDeleted ? "opacity-60" : "border-border",
-        !isDeleted && "hover:border-primary/20",
-        isFocused && "ring-1 ring-primary border-primary/30",
+        "bg-card border rounded-lg overflow-hidden transition-all duration-300",
+        isDeleted && "opacity-60",
+        !isDeleted && !isSelected && "hover:border-primary/20 border-border",
+        isSelected &&
+          "border-rose-400 shadow-[0_0_0_1px_rgba(251,113,133,0.3),0_4px_20px_-4px_rgba(251,113,133,0.25)]",
+        isFocused && !isSelected && "ring-1 ring-primary border-primary/30",
       )}
     >
       <div className="p-3">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">
+            <span className="text-sm font-medium tabular-nums">
               Take {take.takeNumber ?? totalTakes - takeIndex}
             </span>
-            {hasTranscription && (
+            {isSelected && (
+              <Badge
+                variant="secondary"
+                className="text-xs font-normal bg-gradient-to-r from-rose-100 to-pink-100 text-rose-700 dark:from-rose-900/40 dark:to-pink-900/40 dark:text-rose-300 border-rose-200 dark:border-rose-700/50 shadow-sm"
+              >
+                <Heart className="w-3 h-3 mr-0.5 fill-current" />
+                Selected
+              </Badge>
+            )}
+            {hasTranscription && !isSelected && (
               <Badge
                 variant="secondary"
                 className="text-xs font-normal bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0"
@@ -103,55 +118,82 @@ export function TakeCard({
           </span>
         </div>
 
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onPlay}
-            disabled={isDeleted}
-            className="h-7 px-2 text-xs"
-          >
-            {isPlaying ? (
-              <Square className="size-3 mr-1" />
-            ) : (
-              <Play className="size-3 mr-1" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-0.5">
+            {/* Heart Select */}
+            {onSelect && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onSelect(!isSelected)}
+                disabled={isDeleted}
+                className={cn(
+                  "h-8 w-8 transition-all duration-200",
+                  isDeleted && "opacity-40 cursor-not-allowed",
+                  !isDeleted && isSelected
+                    ? "text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                    : !isDeleted &&
+                        "text-muted-foreground hover:text-rose-400 hover:bg-rose-50/50 dark:hover:bg-rose-950/20",
+                )}
+              >
+                <Heart
+                  className={cn(
+                    "size-4 transition-all duration-200",
+                    isSelected && "fill-current scale-110",
+                  )}
+                />
+              </Button>
             )}
-            {isPlaying ? "Stop" : "Play"}
-          </Button>
 
-          {isDeleted ? (
+            {/* Play/Pause Toggle */}
             <Button
               variant="ghost"
-              size="sm"
-              onClick={onRestore}
-              className="h-7 px-2 text-xs"
+              size="icon"
+              onClick={onPlay}
+              disabled={isDeleted}
+              className="h-8 w-8"
             >
-              <RotateCcw className="size-3 mr-1" />
-              Restore
+              {isPlaying ? (
+                <Pause className="size-4" />
+              ) : (
+                <Play className="size-4" />
+              )}
             </Button>
-          ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onDelete}
-              className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-            >
-              <Trash2 className="size-3 mr-1" />
-              Delete
-            </Button>
-          )}
 
+            {/* Delete/Restore */}
+            {isDeleted ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onRestore}
+                className="h-8 w-8"
+              >
+                <RotateCcw className="size-4" />
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onDelete}
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            )}
+          </div>
+
+          {/* Text Toggle - Right Aligned */}
           {!isDeleted && hasTranscription && (
             <Button
               variant="ghost"
               size="sm"
               onClick={onToggleExpand}
-              className="h-7 px-2 text-xs ml-auto"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
             >
               {isExpanded ? (
                 <>
                   <ChevronUp className="size-3 mr-1" />
-                  Hide
+                  Text
                 </>
               ) : (
                 <>

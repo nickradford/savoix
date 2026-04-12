@@ -1,28 +1,32 @@
-# transcript-recorder
+# Savoix
 
-`transcript-recorder` is a small app for recording script takes, transcribing them, and ruthlessly comparing what was said against what was supposed to be said.
+A script recording and transcription application designed for precise dialogue review. Record audio takes, transcribe them automatically, and compare the spoken content against the original script to identify discrepancies.
 
-It is part recorder, part transcript QA tool, part polite little machine for noticing when you said "I'm" and your script said "I am".
+## Features
 
-## What it does
+- **Script Segmentation**: Automatically breaks scripts into line-by-line segments for organized recording
+- **Multiple Takes**: Record and manage multiple takes per segment
+- **Automated Transcription**: Integrates with Parakeet for speech-to-text conversion
+- **Synchronized Playback**: Audio playback with synchronized transcript rendering
+- **Discrepancy Detection**: Highlights omissions, insertions, and contraction mismatches
+- **Stable Take Management**: Maintains consistent take numbering across segments, with soft-delete support
 
-- Breaks a script into line-by-line segments
-- Records multiple takes for each segment
-- Transcribes takes with Parakeet
-- Plays back takes with synced transcript rendering
-- Highlights likely misses, insertions, and contraction mismatches
-- Keeps stable take numbers per segment, even when takes are soft-deleted
+## Technology Stack
 
-## Stack
+- **Frontend**: React 18, React Router, TypeScript, Vite
+- **Backend**: Express.js
+- **Database**: SQLite with Drizzle ORM
+- **Styling**: Tailwind CSS, Radix UI
+- **Testing**: Vitest
 
-- React 18 + React Router + TypeScript
-- Vite
-- Express
-- SQLite + Drizzle
-- Tailwind + Radix
-- Vitest
+## Installation
 
-## Local setup
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (with pnpm)
+- [Parakeet](https://github.com/yashhere/parakeet-mlx-fastapi) transcription server
+
+### Setup
 
 1. Install dependencies:
 
@@ -30,47 +34,41 @@ It is part recorder, part transcript QA tool, part polite little machine for not
 pnpm install
 ```
 
-2. Copy env vars if needed:
+2. Configure environment variables:
 
 ```bash
 cp .env.example .env
 ```
 
-3. Start the Parakeet server:
+3. Start the Parakeet transcription server:
 
 ```bash
 uv tool install git+https://github.com/yashhere/parakeet-mlx-fastapi.git
 parakeet-server --model mlx-community/parakeet-tdt-0.6b-v3 --port 8765
 ```
 
-By default the app expects Parakeet at `http://localhost:8765`. If you want to point somewhere else, set `PARAKEET_ENDPOINT` in `.env`.
+The application expects Parakeet at `http://localhost:8765` by default. To use a different endpoint, set `PARAKEET_ENDPOINT` in your `.env` file.
 
-4. Start the app:
+4. Start the development server:
 
 ```bash
 pnpm dev
 ```
 
-The app runs on [http://localhost:8080](http://localhost:8080).
+The application will be available at [http://localhost:8080](http://localhost:8080).
 
-## Useful commands
+## Available Scripts
 
-```bash
-pnpm dev
-pnpm build
-pnpm start
-pnpm typecheck
-pnpm test
-```
+| Command          | Description                  |
+| ---------------- | ---------------------------- |
+| `pnpm dev`       | Start development server     |
+| `pnpm build`     | Build for production         |
+| `pnpm start`     | Start production server      |
+| `pnpm typecheck` | Run TypeScript type checking |
+| `pnpm test`      | Run test suite               |
 
-## Notes
+## Data Storage
 
-- Recordings are stored locally in `recordings/`.
-- App data lives in `data/app.db`.
-- Take deletion is soft delete, so the app keeps numbering/history intact.
-
-## Current vibe
-
-If the transcript is clean, confidence goes up.
-
-If the transcript gets creative, the UI gets judgmental.
+- **Recordings**: Audio files are stored locally in the `recordings/` directory
+- **Database**: Application data is persisted in `data/app.db`
+- **Take Deletion**: Uses soft-delete mechanism to preserve take numbering and history

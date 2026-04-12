@@ -318,10 +318,13 @@ function TranscriptViewerAudio({
   ...props
 }: ComponentPropsWithoutRef<"audio">) {
   const { audioProps } = useTranscriptViewerContext();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { key: _key, ...restAudioProps } = audioProps;
   return (
     <audio
       data-slot="transcript-audio"
-      {...audioProps}
+      key={audioProps.key}
+      {...restAudioProps}
       {...props}
       ref={audioProps.ref}
     />

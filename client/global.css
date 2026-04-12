@@ -2,6 +2,12 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "@fontsource/opendyslexic/400.css";
+
+/* OpenDyslexic font family */
+.font-dyslexic {
+  font-family: "OpenDyslexic", sans-serif;
+}
 
 @custom-variant dark (&:is(.dark *));
 
@@ -18,8 +24,8 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0.005 285.8);
 
-  /* Primary - soft rose instead of harsh blue */
-  --primary: oklch(0.548 0.15 10);
+  /* Primary - rose-500 */
+  --primary: oklch(0.585 0.233 17.5);
   --primary-foreground: oklch(1 0 0);
 
   /* Secondary - warm light gray */
@@ -40,7 +46,7 @@
   /* Border - barely visible */
   --border: oklch(0.922 0.004 286.3);
   --input: oklch(0.922 0.004 286.3);
-  --ring: oklch(0.64 0.05 10);
+  --ring: oklch(0.585 0.233 17.5);
 
   /* Chart colors - rose family */
   --chart-1: oklch(0.646 0.222 25);
@@ -60,7 +66,7 @@
   --sidebar-accent: oklch(0.97 0.001 286);
   --sidebar-accent-foreground: oklch(0.21 0.006 285.9);
   --sidebar-border: oklch(0.922 0.004 286.3);
-  --sidebar-ring: oklch(0.64 0.05 10);
+  --sidebar-ring: oklch(0.585 0.233 17.5);
 }
 
 .dark {
@@ -74,7 +80,7 @@
   --popover: oklch(0.205 0.01 285);
   --popover-foreground: oklch(0.985 0 0);
 
-  --primary: oklch(0.637 0.15 10);
+  --primary: oklch(0.645 0.246 16.439);
   --primary-foreground: oklch(0.145 0.005 285.8);
 
   --secondary: oklch(0.269 0.01 285);
@@ -90,16 +96,16 @@
 
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.637 0.05 10);
+  --ring: oklch(0.645 0.246 16.439);
 
   --sidebar: oklch(0.205 0.01 285);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.637 0.15 10);
+  --sidebar-primary: oklch(0.645 0.246 16.439);
   --sidebar-primary-foreground: oklch(0.145 0.005 285.8);
   --sidebar-accent: oklch(0.269 0.02 10);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.637 0.05 10);
+  --sidebar-ring: oklch(0.645 0.246 16.439);
 }
 
 @theme inline {

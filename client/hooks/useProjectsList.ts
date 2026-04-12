@@ -87,7 +87,6 @@ export function useProjectsList() {
 
         if (response.ok) {
           setProjects((prev) => prev.filter((p) => p.id !== id));
-          toast({ title: "Success", description: "Project deleted" });
           return true;
         } else {
           toast({

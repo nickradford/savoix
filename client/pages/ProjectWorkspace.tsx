@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useQueryState, parseAsInteger, parseAsString } from "nuqs";
 import { Button } from "@/components/ui/button";
 import {
   Download,
@@ -13,9 +14,13 @@ import {
   Edit3,
   Save,
   FileText,
+  Heart,
+  Keyboard,
+  X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { Slider } from "@/components/ui/slider";
 import { LiveWaveform } from "@/components/ui/live-waveform";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,6 +31,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ScriptEditorArea } from "@/components/ScriptEditorArea";
 import { SegmentItem } from "@/components/SegmentList";
 import { TakeCard } from "@/components/ui/TakeCard";
@@ -355,7 +365,14 @@ export default function ProjectWorkspace() {
 
   const [project, setProject] = useState<Project | null>(null);
   const [segments, setSegments] = useState<ScriptSegment[]>([]);
-  const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
+  const [currentSegmentIndex, setCurrentSegmentIndex] = useQueryState(
+    "segment",
+    parseAsInteger.withDefault(0),
+  );
+  const [expandedTakeNumber, setExpandedTakeNumber] = useQueryState(
+    "take",
+    parseAsInteger,
+  );
   const [isLoading, setIsLoading] = useState(true);
 
   const [isEditingScript, setIsEditingScript] = useState(false);
@@ -366,10 +383,18 @@ export default function ProjectWorkspace() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isTranscribing, setIsTranscribing] = useState(false);
 
+  // Font preferences for script display
+  const [scriptFontFamily, setScriptFontFamily] = useState<
+    "sans" | "serif" | "mono" | "dyslexic"
+  >("sans");
+  const [scriptFontSize, setScriptFontSize] = useState(30); // in pixels
+
+  // Keyboard shortcuts help panel
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
   const [playingTakeId, setPlayingTakeId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const [expandedTakes, setExpandedTakes] = useState<Set<string>>(new Set());
   const [focusedTakeIndex, setFocusedTakeIndex] = useState<number>(-1);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -380,6 +405,7 @@ export default function ProjectWorkspace() {
   const {
     deleteTake,
     restoreTake,
+    selectTake,
     retryTranscription,
     retryingTranscription,
     formatTime: formatTakeTime,
@@ -426,9 +452,34 @@ export default function ProjectWorkspace() {
     };
   }, []);
 
+  // Update document title when project loads
+  useEffect(() => {
+    if (project?.name) {
+      document.title = `${project.name} — Savoix`;
+    } else {
+      document.title = "Savoix";
+    }
+    return () => {
+      document.title = "Savoix";
+    };
+  }, [project?.name]);
+
   useEffect(() => {
     setFocusedTakeIndex(-1);
   }, [currentSegmentIndex]);
+
+  // Validate segment index when segments load or change
+  useEffect(() => {
+    if (segments.length > 0) {
+      const validIndex = Math.min(
+        Math.max(0, currentSegmentIndex),
+        segments.length - 1,
+      );
+      if (validIndex !== currentSegmentIndex) {
+        setCurrentSegmentIndex(validIndex);
+      }
+    }
+  }, [segments.length, currentSegmentIndex, setCurrentSegmentIndex]);
 
   useEffect(() => {
     const takes = segments[currentSegmentIndex]?.takes;
@@ -439,13 +490,20 @@ export default function ProjectWorkspace() {
 
   const currentSegment = segments[currentSegmentIndex];
 
-  const toggleTakeExpansion = (takeId: string) => {
-    setExpandedTakes((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(takeId)) newSet.delete(takeId);
-      else newSet.add(takeId);
-      return newSet;
-    });
+  // Clear expanded take if it doesn't exist in the current segment
+  useEffect(() => {
+    if (expandedTakeNumber && currentSegment) {
+      const takeExists = currentSegment.takes.some(
+        (t) => t.takeNumber === expandedTakeNumber,
+      );
+      if (!takeExists) {
+        setExpandedTakeNumber(null);
+      }
+    }
+  }, [expandedTakeNumber, currentSegment, setExpandedTakeNumber]);
+
+  const toggleTakeExpansion = (takeNumber: number) => {
+    setExpandedTakeNumber((prev) => (prev === takeNumber ? null : takeNumber));
   };
 
   const handleSaveScript = async () => {
@@ -562,7 +620,7 @@ export default function ProjectWorkspace() {
             ),
           );
           if (take.transcription || take.transcriptionError) {
-            setExpandedTakes((prev) => new Set(prev).add(take.id));
+            setExpandedTakeNumber(take.takeNumber);
           }
           if (take.transcription) {
             toast({
@@ -631,7 +689,7 @@ export default function ProjectWorkspace() {
 
     // Otherwise, expand the take and let TranscriptViewer handle playback
     stopPlayback();
-    setExpandedTakes(new Set([take.id]));
+    setExpandedTakeNumber(take.takeNumber);
     setPlayingTakeId(take.id);
 
     // Legacy fallback for takes without TranscriptViewer
@@ -656,6 +714,20 @@ export default function ProjectWorkspace() {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (isEditingScript) return;
+
+      // Handle shortcuts panel toggle (shift is allowed since ? requires shift)
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setShowShortcuts((prev) => !prev);
+        return;
+      }
+
+      // Close shortcuts panel with Escape
+      if (e.key === "Escape" && showShortcuts) {
+        e.preventDefault();
+        setShowShortcuts(false);
+        return;
+      }
 
       switch (e.key) {
         case "ArrowLeft":
@@ -726,6 +798,7 @@ export default function ProjectWorkspace() {
     focusedTakeIndex,
     playingTakeId,
     stopPlayback,
+    showShortcuts,
   ]);
 
   const segmentCount = editedScript
@@ -778,7 +851,7 @@ export default function ProjectWorkspace() {
               <h1 className="text-base font-medium text-foreground">
                 {project.name}
               </h1>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground tabular-nums">
                 Segment {currentSegmentIndex + 1} of {segments.length}
               </p>
             </div>
@@ -853,121 +926,229 @@ export default function ProjectWorkspace() {
             />
           ) : (
             <>
-              <div className="flex-1 flex items-center justify-center p-12">
-                {currentSegment ? (
-                  <div className="max-w-3xl w-full text-center">
-                    <p className="text-3xl font-medium text-foreground leading-relaxed tracking-tight">
-                      {currentSegment.text}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="text-center">
-                    <div className="inline-flex items-center justify-center size-12 rounded-full bg-secondary mb-4">
-                      <FileText className="size-5 text-muted-foreground" />
+              <div className="flex-1 flex flex-col relative">
+                {/* Font Controls - Top Right */}
+                {currentSegment && (
+                  <div className="absolute top-4 right-4 flex items-center gap-3 bg-card/80 backdrop-blur-sm rounded-lg border border-border/50 px-3 py-2 shadow-sm z-10">
+                    {/* Font Family Buttons */}
+                    <div className="flex items-center gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={
+                              scriptFontFamily === "sans"
+                                ? "secondary"
+                                : "ghost"
+                            }
+                            size="sm"
+                            onClick={() => setScriptFontFamily("sans")}
+                            className="h-7 px-2 text-xs font-sans"
+                          >
+                            Aa
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Sans-serif</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={
+                              scriptFontFamily === "serif"
+                                ? "secondary"
+                                : "ghost"
+                            }
+                            size="sm"
+                            onClick={() => setScriptFontFamily("serif")}
+                            className="h-7 px-2 text-xs font-serif"
+                          >
+                            Aa
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Serif</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={
+                              scriptFontFamily === "mono"
+                                ? "secondary"
+                                : "ghost"
+                            }
+                            size="sm"
+                            onClick={() => setScriptFontFamily("mono")}
+                            className="h-7 px-2 text-xs font-mono"
+                          >
+                            Aa
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Monospace</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={
+                              scriptFontFamily === "dyslexic"
+                                ? "secondary"
+                                : "ghost"
+                            }
+                            size="sm"
+                            onClick={() => setScriptFontFamily("dyslexic")}
+                            className="h-7 px-2 text-[10px] font-dyslexic"
+                          >
+                            Aa
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          OpenDyslexic - easier reading
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
-                    <p className="text-muted-foreground mb-4">
-                      No segments in this project
-                    </p>
-                    <Button
-                      onClick={() => setIsEditingScript(true)}
-                      variant="outline"
-                      size="sm"
-                    >
-                      <Edit3 className="size-3.5 mr-1.5" />
-                      Add Script
-                    </Button>
+
+                    {/* Divider */}
+                    <div className="w-px h-5 bg-border" />
+
+                    {/* Font Size Slider */}
+                    <div className="flex items-center gap-2 w-24">
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {scriptFontSize}px
+                      </span>
+                      <Slider
+                        value={[scriptFontSize]}
+                        onValueChange={([value]) => setScriptFontSize(value)}
+                        min={16}
+                        max={72}
+                        step={2}
+                        className="flex-1"
+                      />
+                    </div>
                   </div>
                 )}
-              </div>
 
-              <div className="border-t border-border/50 bg-card/50 px-6 py-5">
-                <div className="max-w-xl mx-auto">
-                  <LiveWaveform
-                    active={isRecording}
-                    processing={isTranscribing}
-                    height={32}
-                    barWidth={2}
-                    barGap={1}
-                    mode="static"
-                    fadeEdges
-                    sensitivity={1.2}
-                    className="mb-5"
-                  />
-
-                  <div className="flex items-center justify-between">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        stopPlayback();
-                        setCurrentSegmentIndex((i) => Math.max(0, i - 1));
-                      }}
-                      disabled={currentSegmentIndex === 0 || isRecording}
-                      className="gap-1"
-                    >
-                      <ChevronLeft className="size-4" />
-                      Prev
-                    </Button>
-
-                    <div className="flex flex-col items-center gap-2">
-                      {isRecording && (
-                        <div className="flex items-center gap-2 text-destructive">
-                          <div className="size-2 rounded-full bg-destructive animate-pulse" />
-                          <span className="text-sm font-medium tabular-nums">
-                            {formatTime(recordingTime)}
-                          </span>
-                        </div>
-                      )}
-                      {isTranscribing && (
-                        <span className="text-xs text-muted-foreground">
-                          Transcribing...
-                        </span>
-                      )}
-
-                      {!isRecording ? (
-                        <Button
-                          onClick={startRecording}
-                          disabled={isTranscribing || !currentSegment}
-                          size="lg"
-                          className={cn(
-                            "gap-2 px-8",
-                            isTranscribing && "opacity-50 cursor-not-allowed",
-                          )}
-                        >
-                          <Mic className="size-4" />
-                          {isTranscribing ? "Transcribing..." : "Record"}
-                        </Button>
-                      ) : (
-                        <Button
-                          onClick={stopRecording}
-                          variant="destructive"
-                          size="lg"
-                          className="gap-2 px-8 animate-recording-pulse"
-                        >
-                          <Square className="size-4" />
-                          Stop
-                        </Button>
-                      )}
+                <div className="flex-1 flex items-center justify-center p-12">
+                  {currentSegment ? (
+                    <div className="max-w-3xl w-full text-center">
+                      <p
+                        className={cn(
+                          "font-medium text-foreground leading-relaxed tracking-tight transition-all duration-200",
+                          scriptFontFamily === "sans" && "font-sans",
+                          scriptFontFamily === "serif" && "font-serif",
+                          scriptFontFamily === "mono" && "font-mono",
+                          scriptFontFamily === "dyslexic" && "font-dyslexic",
+                        )}
+                        style={{ fontSize: `${scriptFontSize}px` }}
+                      >
+                        {currentSegment.text}
+                      </p>
                     </div>
+                  ) : (
+                    <div className="text-center">
+                      <div className="inline-flex items-center justify-center size-12 rounded-full bg-secondary mb-4">
+                        <FileText className="size-5 text-muted-foreground" />
+                      </div>
+                      <p className="text-muted-foreground mb-4">
+                        No segments in this project
+                      </p>
+                      <Button
+                        onClick={() => setIsEditingScript(true)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <Edit3 className="size-3.5 mr-1.5" />
+                        Add Script
+                      </Button>
+                    </div>
+                  )}
+                </div>
 
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        stopPlayback();
-                        setCurrentSegmentIndex((i) =>
-                          Math.min(segments.length - 1, i + 1),
-                        );
-                      }}
-                      disabled={
-                        currentSegmentIndex === segments.length - 1 ||
-                        isRecording
-                      }
-                      className="gap-1"
-                    >
-                      Next
-                      <ChevronRight className="size-4" />
-                    </Button>
+                <div className="border-t border-border/50 bg-card/50 px-6 py-5">
+                  <div className="max-w-xl mx-auto">
+                    <LiveWaveform
+                      active={isRecording}
+                      processing={isTranscribing}
+                      height={32}
+                      barWidth={2}
+                      barGap={1}
+                      mode="static"
+                      fadeEdges
+                      sensitivity={1.2}
+                      className="mb-5"
+                    />
+
+                    <div className="flex items-center justify-between">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          stopPlayback();
+                          setCurrentSegmentIndex((i) => Math.max(0, i - 1));
+                        }}
+                        disabled={currentSegmentIndex === 0 || isRecording}
+                        className="gap-1"
+                      >
+                        <ChevronLeft className="size-4" />
+                        Prev
+                      </Button>
+
+                      <div className="flex flex-col items-center gap-2">
+                        {isRecording && (
+                          <div className="flex items-center gap-2 text-destructive">
+                            <div className="size-2 rounded-full bg-destructive animate-pulse" />
+                            <span className="text-sm font-medium tabular-nums">
+                              {formatTime(recordingTime)}
+                            </span>
+                          </div>
+                        )}
+                        {isTranscribing && (
+                          <span className="text-xs text-muted-foreground">
+                            Transcribing...
+                          </span>
+                        )}
+
+                        {!isRecording ? (
+                          <Button
+                            onClick={startRecording}
+                            disabled={isTranscribing || !currentSegment}
+                            size="lg"
+                            className={cn(
+                              "gap-2 px-8",
+                              isTranscribing && "opacity-50 cursor-not-allowed",
+                            )}
+                          >
+                            <Mic className="size-4" />
+                            {isTranscribing ? "Transcribing..." : "Record"}
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={stopRecording}
+                            variant="destructive"
+                            size="lg"
+                            className="gap-2 px-8 animate-recording-pulse"
+                          >
+                            <Square className="size-4" />
+                            Stop
+                          </Button>
+                        )}
+                      </div>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          stopPlayback();
+                          setCurrentSegmentIndex((i) =>
+                            Math.min(segments.length - 1, i + 1),
+                          );
+                        }}
+                        disabled={
+                          currentSegmentIndex === segments.length - 1 ||
+                          isRecording
+                        }
+                        className="gap-1"
+                      >
+                        Next
+                        <ChevronRight className="size-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -975,13 +1156,126 @@ export default function ProjectWorkspace() {
           )}
         </div>
 
+        {/* Keyboard Shortcuts Hint Button */}
+        {!isEditingScript && (
+          <button
+            onClick={() => setShowShortcuts(true)}
+            className="fixed bottom-4 right-4 z-40 flex items-center gap-1.5 px-2.5 py-1.5 bg-card/90 backdrop-blur-sm border border-border/50 rounded-md shadow-sm text-xs text-muted-foreground hover:text-foreground hover:border-border transition-all"
+            title="Show keyboard shortcuts (?)"
+          >
+            <Keyboard className="size-3.5" />
+            <span className="hidden sm:inline">Shortcuts</span>
+            <kbd className="hidden sm:inline-flex items-center justify-center px-1.5 py-0.5 bg-secondary rounded text-[10px] font-mono">
+              ?
+            </kbd>
+          </button>
+        )}
+
+        {/* Keyboard Shortcuts Panel */}
+        {showShortcuts && (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-end p-4 sm:p-6"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowShortcuts(false);
+            }}
+          >
+            <div className="bg-card/95 backdrop-blur-md border border-border/50 rounded-xl shadow-lg p-5 w-full max-w-sm animate-in slide-in-from-bottom-2 fade-in duration-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <Keyboard className="size-4" />
+                  Keyboard Shortcuts
+                </h3>
+                <button
+                  onClick={() => setShowShortcuts(false)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Previous segment
+                  </span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    ←
+                  </kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Next segment</span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    →
+                  </kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Previous take</span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    ↑
+                  </kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Next take</span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    ↓
+                  </kbd>
+                </div>
+                <div className="h-px bg-border/50 my-3" />
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Record / Stop</span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    Space
+                  </kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Play / Pause take
+                  </span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    P
+                  </kbd>
+                </div>
+                <div className="h-px bg-border/50 my-3" />
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Show / hide shortcuts
+                  </span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    ?
+                  </kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Close this panel
+                  </span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    Esc
+                  </kbd>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {!isEditingScript && (
           <div className="w-80 border-l border-border/50 bg-secondary/30 flex flex-col">
             <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
               <h2 className="text-sm font-medium">Takes</h2>
-              <Badge variant="secondary" className="text-xs font-normal">
-                {currentSegment?.takes.filter((t) => !t.deletedAt).length || 0}
-              </Badge>
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const totalCount =
+                    currentSegment?.takes.filter((t) => !t.deletedAt).length ||
+                    0;
+                  return (
+                    <Badge
+                      variant="secondary"
+                      className="text-xs font-normal tabular-nums"
+                    >
+                      {totalCount} total
+                    </Badge>
+                  );
+                })()}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -997,7 +1291,7 @@ export default function ProjectWorkspace() {
                 </div>
               ) : (
                 currentSegment.takes.map((take, index) => {
-                  const isExpanded = expandedTakes.has(take.id);
+                  const isExpanded = expandedTakeNumber === take.takeNumber;
                   const isFocused = focusedTakeIndex === index;
                   const isRetrying = retryingTranscription.has(take.id);
                   const isAutoPlay = isExpanded && playingTakeId === take.id;
@@ -1013,11 +1307,14 @@ export default function ProjectWorkspace() {
                       isPlaying={playingTakeId === take.id}
                       isRetrying={isRetrying}
                       autoPlay={isAutoPlay}
-                      onToggleExpand={() => toggleTakeExpansion(take.id)}
+                      onToggleExpand={() =>
+                        toggleTakeExpansion(take.takeNumber ?? 0)
+                      }
                       onPlay={() => playTake(take)}
                       onDelete={() => deleteTake(take.id)}
                       onRestore={() => restoreTake(take.id)}
                       onRetry={() => retryTranscription(take)}
+                      onSelect={(isSelected) => selectTake(take.id, isSelected)}
                       formatTime={formatTakeTime}
                       getTakeDurationMs={getTakeDurationMs}
                       transcriptAlignment={getTakeAlignment(take)}

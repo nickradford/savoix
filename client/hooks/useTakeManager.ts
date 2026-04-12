@@ -13,6 +13,7 @@ export interface SegmentTake {
   segments?: string;
   audioDuration?: number;
   duration: number;
+  isSelected?: boolean;
   createdAt: string;
   deletedAt?: string | null;
   transcriptionError?: string;
@@ -37,6 +38,27 @@ export function useTakeManager(segments: Segment[], setSegments: SetSegments) {
   const deleteTake = useCallback(
     async (takeId: string): Promise<boolean> => {
       try {
+        // Find the take to check if it's selected
+        let wasSelected = false;
+        setSegments((prev) => {
+          const take = prev
+            .flatMap((seg) => seg.takes)
+            .find((t) => t.id === takeId);
+          if (take?.isSelected) {
+            wasSelected = true;
+          }
+          return prev;
+        });
+
+        // If selected, deselect first
+        if (wasSelected) {
+          await fetch(`/api/takes/${takeId}/select`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ isSelected: false }),
+          });
+        }
+
         const response = await fetch(`/api/takes/${takeId}`, {
           method: "DELETE",
         });
@@ -46,12 +68,15 @@ export function useTakeManager(segments: Segment[], setSegments: SetSegments) {
               ...seg,
               takes: seg.takes.map((t) =>
                 t.id === takeId
-                  ? { ...t, deletedAt: new Date().toISOString() }
+                  ? {
+                      ...t,
+                      deletedAt: new Date().toISOString(),
+                      isSelected: false,
+                    }
                   : t,
               ),
             })),
           );
-          toast({ title: "Success", description: "Take deleted" });
           return true;
         } else {
           toast({
@@ -92,7 +117,6 @@ export function useTakeManager(segments: Segment[], setSegments: SetSegments) {
               ),
             })),
           );
-          toast({ title: "Success", description: "Take restored" });
           return true;
         } else {
           toast({
@@ -137,7 +161,7 @@ export function useTakeManager(segments: Segment[], setSegments: SetSegments) {
             ),
           );
           if (updatedTake.transcription) {
-            toast({ title: "Success", description: "Transcription completed" });
+            // Success - no toast needed
           } else {
             toast({
               title: "Warning",
@@ -187,9 +211,59 @@ export function useTakeManager(segments: Segment[], setSegments: SetSegments) {
     [],
   );
 
+  const selectTake = useCallback(
+    async (takeId: string, isSelected: boolean): Promise<boolean> => {
+      try {
+        const response = await fetch(`/api/takes/${takeId}/select`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isSelected }),
+        });
+
+        if (response.ok) {
+          const updatedTake = await response.json();
+          setSegments((prev) =>
+            prev.map((seg) =>
+              seg.id === updatedTake.segmentId
+                ? {
+                    ...seg,
+                    takes: seg.takes.map((t) =>
+                      t.id === takeId
+                        ? { ...t, isSelected: updatedTake.isSelected }
+                        : isSelected && t.segmentId === updatedTake.segmentId
+                          ? { ...t, isSelected: false }
+                          : t,
+                    ),
+                  }
+                : seg,
+            ),
+          );
+          return true;
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to update take selection",
+            variant: "destructive",
+          });
+          return false;
+        }
+      } catch (error) {
+        console.error("Error selecting take:", error);
+        toast({
+          title: "Error",
+          description: "Failed to update take selection",
+          variant: "destructive",
+        });
+        return false;
+      }
+    },
+    [setSegments, toast],
+  );
+
   return {
     deleteTake,
     restoreTake,
+    selectTake,
     retryTranscription,
     retryingTranscription,
     formatTime,

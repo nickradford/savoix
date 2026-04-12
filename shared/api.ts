@@ -44,6 +44,7 @@ export interface SegmentTake {
   segments?: string;
   audioDuration?: number;
   duration: number;
+  isSelected?: boolean;
   createdAt: string;
   deletedAt?: string | null;
   transcriptionError?: string;
