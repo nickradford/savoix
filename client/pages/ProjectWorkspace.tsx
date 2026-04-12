@@ -12,26 +12,13 @@ import {
   Trash2,
   Edit3,
   Save,
-  X,
-  ChevronDown,
-  ChevronUp,
-  RefreshCw,
-  AlertCircle,
-  RotateCcw,
   FileText,
-  MoreHorizontal,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { LiveWaveform } from "@/components/ui/live-waveform";
-import {
-  TranscriptViewerAudio,
-  TranscriptViewerContainer,
-  TranscriptViewerScrubBar,
-  TranscriptViewerWord,
-  TranscriptViewerWords,
-  type CharacterAlignmentResponseModel,
-} from "@/components/ui/transcript-viewer";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -39,34 +26,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { ScriptEditorArea } from "@/components/ScriptEditorArea";
+import { SegmentItem } from "@/components/SegmentList";
+import { TakeCard } from "@/components/ui/TakeCard";
+import { useTakeManager, type SegmentTake } from "@/hooks/useTakeManager";
 
-// Types
-interface ScriptSegment {
+const SAMPLE_RATE = 16000;
+
+export interface ScriptSegment {
   id: string;
   projectId: string;
   index: number;
   text: string;
   takes: SegmentTake[];
-}
-
-interface SegmentTake {
-  id: string;
-  segmentId: string;
-  recordingId: string;
-  recordingPath: string;
-  takeNumber?: number;
-  transcription?: string;
-  confidence?: number;
-  words?: string;
-  segments?: string;
-  audioDuration?: number;
-  duration: number;
-  createdAt: string;
-  deletedAt?: string | null;
-  transcriptionError?: string;
 }
 
 interface Project {
@@ -88,10 +60,6 @@ type TimestampedWord = {
   end_time?: number;
 };
 
-// Constants
-const SAMPLE_RATE = 16000;
-
-// Helper functions
 function parseTakeWords(words: string | undefined): TimestampedWord[] {
   if (!words) return [];
   try {
@@ -185,6 +153,12 @@ function readTimestamp(
     }
   }
   return null;
+}
+
+interface CharacterAlignmentResponseModel {
+  characters: string[];
+  characterStartTimesSeconds: number[];
+  characterEndTimesSeconds: number[];
 }
 
 function appendAlignedText(
@@ -310,15 +284,6 @@ function getTakeAlignment(
   );
 }
 
-function getTakeDurationMs(
-  take: Pick<SegmentTake, "audioDuration" | "duration">,
-): number {
-  if ((take.audioDuration ?? 0) > 0) {
-    return Math.round((take.audioDuration ?? 0) * 1000);
-  }
-  return take.duration;
-}
-
 function findNextNavigableTakeIndex(
   takes: SegmentTake[] | undefined,
   currentIndex: number,
@@ -376,7 +341,13 @@ function float32ToWavBlob(samples: Float32Array, sampleRate: number): Blob {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-// Main component
+function formatTime(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
 export default function ProjectWorkspace() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -387,34 +358,34 @@ export default function ProjectWorkspace() {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Script editing state
   const [isEditingScript, setIsEditingScript] = useState(false);
   const [editedScript, setEditedScript] = useState("");
   const [isSavingScript, setIsSavingScript] = useState(false);
 
-  // Recording state
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isTranscribing, setIsTranscribing] = useState(false);
 
-  // Audio playback state
   const [playingTakeId, setPlayingTakeId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Take expansion state
   const [expandedTakes, setExpandedTakes] = useState<Set<string>>(new Set());
-  const [retryingTranscription, setRetryingTranscription] = useState<
-    Set<string>
-  >(new Set());
   const [focusedTakeIndex, setFocusedTakeIndex] = useState<number>(-1);
 
-  // Recording refs
   const audioCtxRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch project
+  const {
+    deleteTake,
+    restoreTake,
+    retryTranscription,
+    retryingTranscription,
+    formatTime: formatTakeTime,
+    getTakeDurationMs,
+  } = useTakeManager(segments, setSegments);
+
   useEffect(() => {
     if (!id) return;
     const fetchProject = async () => {
@@ -446,7 +417,6 @@ export default function ProjectWorkspace() {
     fetchProject();
   }, [id, toast]);
 
-  // Cleanup
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -460,88 +430,12 @@ export default function ProjectWorkspace() {
     setFocusedTakeIndex(-1);
   }, [currentSegmentIndex]);
 
-  // Auto-play take when navigating with keyboard
   useEffect(() => {
     const takes = segments[currentSegmentIndex]?.takes;
     if (!takes || focusedTakeIndex < 0 || focusedTakeIndex >= takes.length)
       return;
     playTake(takes[focusedTakeIndex]);
   }, [focusedTakeIndex, currentSegmentIndex]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (isEditingScript) return;
-
-      switch (e.key) {
-        case "ArrowLeft":
-          e.preventDefault();
-          setCurrentSegmentIndex((i) => Math.max(0, i - 1));
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          setCurrentSegmentIndex((i) => Math.min(segments.length - 1, i + 1));
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          setFocusedTakeIndex((i) =>
-            findNextNavigableTakeIndex(
-              segments[currentSegmentIndex]?.takes,
-              i,
-              -1,
-            ),
-          );
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          setFocusedTakeIndex((i) =>
-            findNextNavigableTakeIndex(
-              segments[currentSegmentIndex]?.takes,
-              i,
-              1,
-            ),
-          );
-          break;
-        case " ":
-          e.preventDefault();
-          if (isRecording) {
-            stopRecording();
-          } else if (!isTranscribing) {
-            startRecording();
-          }
-          break;
-        case "p":
-        case "P":
-          e.preventDefault();
-          if (playingTakeId) {
-            stopPlayback();
-          } else {
-            const takes = segments[currentSegmentIndex]?.takes;
-            const focusedTake =
-              takes && focusedTakeIndex >= 0 && focusedTakeIndex < takes.length
-                ? takes[focusedTakeIndex]
-                : undefined;
-            if (focusedTake && !focusedTake.deletedAt) {
-              playTake(focusedTake);
-            }
-          }
-          break;
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    segments,
-    currentSegmentIndex,
-    isRecording,
-    isTranscribing,
-    isEditingScript,
-    focusedTakeIndex,
-    playingTakeId,
-  ]);
 
   const currentSegment = segments[currentSegmentIndex];
 
@@ -552,58 +446,6 @@ export default function ProjectWorkspace() {
       else newSet.add(takeId);
       return newSet;
     });
-  };
-
-  const retryTranscription = async (take: SegmentTake) => {
-    setRetryingTranscription((prev) => new Set(prev).add(take.id));
-    try {
-      const response = await fetch(`/api/takes/${take.id}/transcribe`, {
-        method: "POST",
-      });
-      if (response.ok) {
-        const updatedTake = await response.json();
-        setSegments((prev) =>
-          prev.map((seg) =>
-            seg.id === take.segmentId
-              ? {
-                  ...seg,
-                  takes: seg.takes.map((t) =>
-                    t.id === take.id ? { ...t, ...updatedTake } : t,
-                  ),
-                }
-              : seg,
-          ),
-        );
-        if (updatedTake.transcription) {
-          toast({ title: "Success", description: "Transcription completed" });
-        } else {
-          toast({
-            title: "Warning",
-            description: "Transcription failed again",
-            variant: "destructive",
-          });
-        }
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to retry transcription",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Error retrying transcription:", error);
-      toast({
-        title: "Error",
-        description: "Failed to retry transcription",
-        variant: "destructive",
-      });
-    } finally {
-      setRetryingTranscription((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(take.id);
-        return newSet;
-      });
-    }
   };
 
   const handleSaveScript = async () => {
@@ -773,143 +615,118 @@ export default function ProjectWorkspace() {
 
   const playTake = (take: SegmentTake) => {
     if (take.deletedAt) return;
-    const transcriptAudio = document.querySelector<HTMLAudioElement>(
-      `[data-take-audio-id="${take.id}"]`,
-    );
-    if (transcriptAudio) {
-      const isCurrentTakePlaying =
-        playingTakeId === take.id && !transcriptAudio.paused;
-      if (isCurrentTakePlaying) {
+
+    // If currently playing this take, stop it
+    if (playingTakeId === take.id) {
+      const transcriptAudio = document.querySelector<HTMLAudioElement>(
+        `[data-take-audio-id="${take.id}"]`,
+      );
+      if (transcriptAudio) {
         transcriptAudio.pause();
-        setPlayingTakeId(null);
-        return;
+        transcriptAudio.currentTime = 0;
       }
-      stopPlayback(transcriptAudio);
-      setExpandedTakes(new Set([take.id]));
-      transcriptAudio.currentTime = 0;
-      transcriptAudio
-        .play()
-        .then(() => setPlayingTakeId(take.id))
-        .catch(() => {
-          toast({
-            title: "Error",
-            description: "Could not play audio file",
-            variant: "destructive",
-          });
-          setPlayingTakeId(null);
-        });
+      setPlayingTakeId(null);
       return;
     }
-    const isCurrentLegacyTakePlaying =
-      playingTakeId === take.id && audioRef.current !== null;
-    if (isCurrentLegacyTakePlaying) {
-      stopPlayback();
-      return;
-    }
+
+    // Otherwise, expand the take and let TranscriptViewer handle playback
     stopPlayback();
     setExpandedTakes(new Set([take.id]));
-    const audio = new Audio(`/api/recordings/${take.recordingId}`);
-    audioRef.current = audio;
-    audio.onended = () => setPlayingTakeId(null);
-    audio.onerror = () => {
-      toast({
-        title: "Error",
-        description: "Could not play audio file",
-        variant: "destructive",
-      });
-      setPlayingTakeId(null);
-    };
-    audio
-      .play()
-      .then(() => setPlayingTakeId(take.id))
-      .catch(() =>
+    setPlayingTakeId(take.id);
+
+    // Legacy fallback for takes without TranscriptViewer
+    const hasTranscriptViewer = take.transcription;
+    if (!hasTranscriptViewer) {
+      const audio = new Audio(`/api/recordings/${take.recordingId}`);
+      audioRef.current = audio;
+      audio.onended = () => setPlayingTakeId(null);
+      audio.onerror = () => {
         toast({
           title: "Error",
           description: "Could not play audio file",
           variant: "destructive",
-        }),
-      );
-  };
-
-  const deleteTake = async (takeId: string) => {
-    try {
-      const response = await fetch(`/api/takes/${takeId}`, {
-        method: "DELETE",
-      });
-      if (response.ok) {
-        setSegments((prev) =>
-          prev.map((seg) => ({
-            ...seg,
-            takes: seg.takes.map((t) =>
-              t.id === takeId
-                ? { ...t, deletedAt: new Date().toISOString() }
-                : t,
-            ),
-          })),
-        );
-        setExpandedTakes((prev) => {
-          const next = new Set(prev);
-          next.delete(takeId);
-          return next;
         });
-        if (playingTakeId === takeId) stopPlayback();
-        toast({ title: "Success", description: "Take deleted" });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to delete take",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Error deleting take:", error);
-      toast({
-        title: "Error",
-        description: "Failed to delete take",
-        variant: "destructive",
-      });
+        setPlayingTakeId(null);
+      };
     }
   };
 
-  const restoreTake = async (takeId: string) => {
-    try {
-      const response = await fetch(`/api/takes/${takeId}/restore`, {
-        method: "POST",
-      });
-      if (response.ok) {
-        const restoredTake = await response.json();
-        setSegments((prev) =>
-          prev.map((seg) => ({
-            ...seg,
-            takes: seg.takes.map((t) =>
-              t.id === takeId ? { ...t, ...restoredTake, deletedAt: null } : t,
-            ),
-          })),
-        );
-        toast({ title: "Success", description: "Take restored" });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to restore take",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Error restoring take:", error);
-      toast({
-        title: "Error",
-        description: "Failed to restore take",
-        variant: "destructive",
-      });
-    }
-  };
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (isEditingScript) return;
 
-  const formatTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000);
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
+      switch (e.key) {
+        case "ArrowLeft":
+          e.preventDefault();
+          stopPlayback();
+          setCurrentSegmentIndex((i) => Math.max(0, i - 1));
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          stopPlayback();
+          setCurrentSegmentIndex((i) => Math.min(segments.length - 1, i + 1));
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setFocusedTakeIndex((i) =>
+            findNextNavigableTakeIndex(
+              segments[currentSegmentIndex]?.takes,
+              i,
+              -1,
+            ),
+          );
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          setFocusedTakeIndex((i) =>
+            findNextNavigableTakeIndex(
+              segments[currentSegmentIndex]?.takes,
+              i,
+              1,
+            ),
+          );
+          break;
+        case " ":
+          e.preventDefault();
+          if (isRecording) {
+            stopRecording();
+          } else if (!isTranscribing) {
+            startRecording();
+          }
+          break;
+        case "p":
+        case "P":
+          e.preventDefault();
+          if (playingTakeId) {
+            stopPlayback();
+          } else {
+            const takes = segments[currentSegmentIndex]?.takes;
+            const focusedTake =
+              takes && focusedTakeIndex >= 0 && focusedTakeIndex < takes.length
+                ? takes[focusedTakeIndex]
+                : undefined;
+            if (focusedTake && !focusedTake.deletedAt) {
+              playTake(focusedTake);
+            }
+          }
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    segments,
+    currentSegmentIndex,
+    isRecording,
+    isTranscribing,
+    isEditingScript,
+    focusedTakeIndex,
+    playingTakeId,
+    stopPlayback,
+  ]);
 
   const segmentCount = editedScript
     .split("\n")
@@ -946,7 +763,6 @@ export default function ProjectWorkspace() {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      {/* Header */}
       <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm px-6 py-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -1006,9 +822,7 @@ export default function ProjectWorkspace() {
         </div>
       </header>
 
-      {/* Main Workspace */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Script Segments List */}
         <div className="w-72 border-r border-border/50 bg-secondary/30 flex flex-col">
           <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
             <h2 className="text-sm font-medium">Segments</h2>
@@ -1018,83 +832,27 @@ export default function ProjectWorkspace() {
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
             {segments.map((segment, index) => (
-              <button
+              <SegmentItem
                 key={segment.id}
+                segment={segment}
+                index={index}
+                isActive={index === currentSegmentIndex}
                 onClick={() => setCurrentSegmentIndex(index)}
-                className={cn(
-                  "w-full text-left px-3 py-2.5 rounded-md text-sm transition-colors",
-                  index === currentSegmentIndex
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
-                )}
-              >
-                <div className="flex items-start gap-2.5">
-                  <span className="font-mono text-xs opacity-50 mt-0.5 tabular-nums">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span className="truncate flex-1">{segment.text}</span>
-                </div>
-                {segment.takes.length > 0 && (
-                  <div className="mt-1 ml-6 text-xs opacity-50">
-                    {segment.takes.filter((t) => !t.deletedAt).length} take
-                    {segment.takes.filter((t) => !t.deletedAt).length !== 1
-                      ? "s"
-                      : ""}
-                  </div>
-                )}
-              </button>
+              />
             ))}
           </div>
         </div>
 
-        {/* Center: Current Segment & Recording OR Script Editor */}
         <div className="flex-1 flex flex-col bg-background">
           {isEditingScript ? (
-            /* Script Editor Mode */
-            <div className="flex-1 flex flex-col p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-base font-medium">Edit Script</h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Each line becomes a recording segment.{" "}
-                    {segmentCount > 0 && (
-                      <span className="text-primary">
-                        {" "}
-                        Will create {segmentCount} segment
-                        {segmentCount !== 1 ? "s" : ""}.
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleSaveScript}
-                    disabled={isSavingScript}
-                    size="sm"
-                  >
-                    <Save className="size-3.5 mr-1.5" />
-                    {isSavingScript ? "Saving..." : "Save"}
-                  </Button>
-                  <Button
-                    onClick={() => setIsEditingScript(false)}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-              <Textarea
-                value={editedScript}
-                onChange={(e) => setEditedScript(e.target.value)}
-                placeholder="Paste your script here... Each line will become a separate recording segment."
-                className="flex-1 font-mono text-sm leading-relaxed resize-none"
-              />
-            </div>
+            <ScriptEditorArea
+              initialContent={editedScript}
+              onUpdateScript={setEditedScript}
+              isSaving={isSavingScript}
+              onSave={handleSaveScript}
+            />
           ) : (
-            /* Recording Mode */
             <>
-              {/* Current Segment Display */}
               <div className="flex-1 flex items-center justify-center p-12">
                 {currentSegment ? (
                   <div className="max-w-3xl w-full text-center">
@@ -1122,10 +880,8 @@ export default function ProjectWorkspace() {
                 )}
               </div>
 
-              {/* Recording Controls */}
               <div className="border-t border-border/50 bg-card/50 px-6 py-5">
                 <div className="max-w-xl mx-auto">
-                  {/* Waveform */}
                   <LiveWaveform
                     active={isRecording}
                     processing={isTranscribing}
@@ -1138,14 +894,14 @@ export default function ProjectWorkspace() {
                     className="mb-5"
                   />
 
-                  {/* Controls */}
                   <div className="flex items-center justify-between">
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() =>
-                        setCurrentSegmentIndex((i) => Math.max(0, i - 1))
-                      }
+                      onClick={() => {
+                        stopPlayback();
+                        setCurrentSegmentIndex((i) => Math.max(0, i - 1));
+                      }}
                       disabled={currentSegmentIndex === 0 || isRecording}
                       className="gap-1"
                     >
@@ -1197,11 +953,12 @@ export default function ProjectWorkspace() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() =>
+                      onClick={() => {
+                        stopPlayback();
                         setCurrentSegmentIndex((i) =>
                           Math.min(segments.length - 1, i + 1),
-                        )
-                      }
+                        );
+                      }}
                       disabled={
                         currentSegmentIndex === segments.length - 1 ||
                         isRecording
@@ -1218,7 +975,6 @@ export default function ProjectWorkspace() {
           )}
         </div>
 
-        {/* Right: Takes for Current Segment */}
         {!isEditingScript && (
           <div className="w-80 border-l border-border/50 bg-secondary/30 flex flex-col">
             <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
@@ -1242,186 +998,36 @@ export default function ProjectWorkspace() {
               ) : (
                 currentSegment.takes.map((take, index) => {
                   const isExpanded = expandedTakes.has(take.id);
-                  const isDeleted = !!take.deletedAt;
-                  const hasTranscription = !!take.transcription;
-                  const hasError = take.transcriptionError && !hasTranscription;
-                  const transcriptAlignment = getTakeAlignment(take);
-                  const isRetrying = retryingTranscription.has(take.id);
-
                   const isFocused = focusedTakeIndex === index;
+                  const isRetrying = retryingTranscription.has(take.id);
+                  const isAutoPlay = isExpanded && playingTakeId === take.id;
 
                   return (
-                    <div
+                    <TakeCard
                       key={take.id}
-                      className={cn(
-                        "bg-card border rounded-lg overflow-hidden transition-all",
-                        isDeleted ? "opacity-60" : "border-border",
-                        !isDeleted && "hover:border-primary/20",
-                        isFocused && "ring-1 ring-primary border-primary/30",
-                      )}
-                    >
-                      {/* Take Header */}
-                      <div className="p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">
-                              Take{" "}
-                              {take.takeNumber ??
-                                currentSegment.takes.length - index}
-                            </span>
-                            {hasTranscription && (
-                              <Badge
-                                variant="secondary"
-                                className="text-xs font-normal bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0"
-                              >
-                                Done
-                              </Badge>
-                            )}
-                            {isDeleted && (
-                              <Badge
-                                variant="secondary"
-                                className="text-xs font-normal"
-                              >
-                                Deleted
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground tabular-nums">
-                            {formatTime(getTakeDurationMs(take))}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => playTake(take)}
-                            disabled={isDeleted}
-                            className="h-7 px-2 text-xs"
-                          >
-                            {playingTakeId === take.id ? (
-                              <Square className="size-3 mr-1" />
-                            ) : (
-                              <Play className="size-3 mr-1" />
-                            )}
-                            {playingTakeId === take.id ? "Stop" : "Play"}
-                          </Button>
-
-                          {isDeleted ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => restoreTake(take.id)}
-                              className="h-7 px-2 text-xs"
-                            >
-                              <RotateCcw className="size-3 mr-1" />
-                              Restore
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => deleteTake(take.id)}
-                              className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="size-3 mr-1" />
-                              Delete
-                            </Button>
-                          )}
-
-                          {!isDeleted && hasTranscription && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toggleTakeExpansion(take.id)}
-                              className="h-7 px-2 text-xs ml-auto"
-                            >
-                              {isExpanded ? (
-                                <>
-                                  <ChevronUp className="size-3 mr-1" />
-                                  Hide
-                                </>
-                              ) : (
-                                <>
-                                  <ChevronDown className="size-3 mr-1" />
-                                  Text
-                                </>
-                              )}
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Expanded Content */}
-                      {isExpanded &&
-                        !isDeleted &&
-                        hasTranscription &&
-                        transcriptAlignment && (
-                          <div className="px-3 pb-3 border-t border-border/50 pt-2">
-                            <TranscriptViewerContainer
-                              audioSrc={`/api/recordings/${take.recordingId}`}
-                              audioType="audio/wav"
-                              alignment={transcriptAlignment}
-                              onPlay={() => setPlayingTakeId(take.id)}
-                              onPause={() =>
-                                setPlayingTakeId((id) =>
-                                  id === take.id ? null : id,
-                                )
-                              }
-                              onEnded={() =>
-                                setPlayingTakeId((id) =>
-                                  id === take.id ? null : id,
-                                )
-                              }
-                              className="space-y-0"
-                            >
-                              <div className="rounded-md border border-border/50 bg-secondary/50 p-2.5 mb-2">
-                                <TranscriptViewerScrubBar
-                                  className="w-full"
-                                  labelsClassName="text-[10px]"
-                                />
-                                <TranscriptViewerWords className="text-xs leading-5 mt-2" />
-                              </div>
-                              <TranscriptViewerAudio
-                                className="hidden"
-                                data-take-audio-id={take.id}
-                              />
-                            </TranscriptViewerContainer>
-                            {take.confidence !== undefined && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Confidence: {Math.round(take.confidence * 100)}%
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                      {/* Error State */}
-                      {hasError && !isDeleted && (
-                        <div className="px-3 pb-3 border-t border-border/50 pt-2">
-                          <div className="flex items-center gap-1.5 text-amber-600 mb-2">
-                            <AlertCircle className="size-3.5" />
-                            <span className="text-xs">
-                              Transcription failed
-                            </span>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => retryTranscription(take)}
-                            disabled={isRetrying}
-                            className="h-7 text-xs"
-                          >
-                            <RefreshCw
-                              className={cn(
-                                "size-3 mr-1",
-                                isRetrying && "animate-spin",
-                              )}
-                            />
-                            {isRetrying ? "Retrying..." : "Retry"}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
+                      take={take}
+                      takeIndex={index}
+                      totalTakes={currentSegment.takes.length}
+                      isExpanded={isExpanded}
+                      isFocused={isFocused}
+                      isPlaying={playingTakeId === take.id}
+                      isRetrying={isRetrying}
+                      autoPlay={isAutoPlay}
+                      onToggleExpand={() => toggleTakeExpansion(take.id)}
+                      onPlay={() => playTake(take)}
+                      onDelete={() => deleteTake(take.id)}
+                      onRestore={() => restoreTake(take.id)}
+                      onRetry={() => retryTranscription(take)}
+                      formatTime={formatTakeTime}
+                      getTakeDurationMs={getTakeDurationMs}
+                      transcriptAlignment={getTakeAlignment(take)}
+                      expectedScript={currentSegment.text}
+                      onPlayStateChange={(isPlaying) => {
+                        if (!isPlaying && playingTakeId === take.id) {
+                          setPlayingTakeId(null);
+                        }
+                      }}
+                    />
                   );
                 })
               )}

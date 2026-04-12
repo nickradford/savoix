@@ -1,149 +1,33 @@
-import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Plus, Play, Trash2, Mic, FileText, Calendar } from "lucide-react";
+import { Plus, Mic } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useToast } from "@/hooks/use-toast";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-
-interface Project {
-  id: string;
-  name: string;
-  description: string;
-  createdAt: string;
-  segmentCount?: number;
-  takeCount?: number;
-}
+import { Trash2, Play, FileText, Calendar } from "lucide-react";
+import { useProjectsList } from "@/hooks/useProjectsList";
+import { ProjectForm } from "@/components/ui/ProjectForm";
 
 export default function Index() {
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { projects, isLoading, createProject, deleteProject } =
+    useProjectsList();
   const [isCreating, setIsCreating] = useState(false);
-  const [newProjectName, setNewProjectName] = useState("");
-  const [newProjectScript, setNewProjectScript] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch projects from API
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const response = await fetch("/api/projects");
-        if (response.ok) {
-          const data = await response.json();
-          setProjects(data);
-        } else {
-          toast({
-            title: "Error",
-            description: "Failed to load projects",
-            variant: "destructive",
-          });
-        }
-      } catch (error) {
-        console.error("Error fetching projects:", error);
-        toast({
-          title: "Error",
-          description: "Failed to load projects",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchProjects();
-  }, [toast]);
-
-  const handleCreateProject = async () => {
-    if (!newProjectName.trim()) {
-      toast({
-        title: "Error",
-        description: "Project name is required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newProjectName,
-          description: "",
-          script: newProjectScript,
-        }),
-      });
-
-      if (response.ok) {
-        const project = await response.json();
-        setProjects([project, ...projects]);
-        setNewProjectName("");
-        setNewProjectScript("");
-        setIsCreating(false);
-        navigate(`/project/${project.id}`);
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to create project",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Error creating project:", error);
-      toast({
-        title: "Error",
-        description: "Failed to create project",
-        variant: "destructive",
-      });
+  const handleCreateProject = async (name: string, script: string) => {
+    const project = await createProject(name, script);
+    if (project) {
+      setIsCreating(false);
+      navigate(`/project/${project.id}`);
     }
   };
-
-  const handleDeleteProject = async (id: string) => {
-    try {
-      const response = await fetch(`/api/projects/${id}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        setProjects(projects.filter((p) => p.id !== id));
-        toast({
-          title: "Success",
-          description: "Project deleted",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to delete project",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Error deleting project:", error);
-      toast({
-        title: "Error",
-        description: "Failed to delete project",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // Calculate number of segments from script
-  const segmentCount = newProjectScript
-    .split("\n")
-    .filter((line) => line.trim().length > 0).length;
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-6">
           <div className="flex justify-between items-center">
@@ -167,7 +51,6 @@ export default function Index() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-6xl mx-auto px-6 py-10">
         {isCreating && (
           <div className="mb-10 animate-slide-up">
@@ -177,70 +60,15 @@ export default function Index() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    setIsCreating(false);
-                    setNewProjectName("");
-                    setNewProjectScript("");
-                  }}
+                  onClick={() => setIsCreating(false)}
                 >
                   Cancel
                 </Button>
               </div>
-
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">
-                    Project Name
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder="My Script Project"
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    autoFocus
-                    className="max-w-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">
-                    Script
-                  </label>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Paste your script. Each line becomes a recording segment.
-                  </p>
-                  <Textarea
-                    placeholder="Welcome to our video...&#10;In this tutorial we'll learn...&#10;Let's get started..."
-                    value={newProjectScript}
-                    onChange={(e) => setNewProjectScript(e.target.value)}
-                    rows={6}
-                    className="font-mono text-sm resize-none"
-                  />
-                  {newProjectScript.trim() && (
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Will create {segmentCount} segment
-                      {segmentCount !== 1 ? "s" : ""}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex gap-2 pt-1">
-                  <Button onClick={handleCreateProject} size="sm">
-                    Create Project
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setIsCreating(false);
-                      setNewProjectName("");
-                      setNewProjectScript("");
-                    }}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
+              <ProjectForm
+                onSubmit={handleCreateProject}
+                onCancel={() => setIsCreating(false)}
+              />
             </div>
           </div>
         )}
@@ -323,7 +151,7 @@ export default function Index() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          onClick={() => handleDeleteProject(project.id)}
+                          onClick={() => deleteProject(project.id)}
                           className="text-destructive"
                         >
                           <Trash2 className="size-4 mr-2" />
@@ -333,16 +161,15 @@ export default function Index() {
                     </DropdownMenu>
                   </div>
 
-                  <Link to={`/project/${project.id}`}>
-                    <Button
-                      variant="secondary"
-                      className="w-full gap-2 text-sm"
-                      size="sm"
-                    >
-                      <Play className="size-3.5" />
-                      Open Project
-                    </Button>
-                  </Link>
+                  <Button
+                    variant="secondary"
+                    className="w-full gap-2 text-sm"
+                    size="sm"
+                    onClick={() => navigate(`/project/${project.id}`)}
+                  >
+                    <Play className="size-3.5" />
+                    Open Project
+                  </Button>
                 </div>
               </div>
             ))}
