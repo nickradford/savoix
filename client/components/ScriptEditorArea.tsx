@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Save } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,6 +8,8 @@ interface ScriptEditorAreaProps {
   onUpdateScript: (script: string) => void;
   isSaving: boolean;
   onSave: () => Promise<void>;
+  onCancel: () => void;
+  originalContent: string;
 }
 
 export function ScriptEditorArea({
@@ -15,7 +17,22 @@ export function ScriptEditorArea({
   onUpdateScript,
   isSaving,
   onSave,
+  onCancel,
+  originalContent,
 }: ScriptEditorAreaProps) {
+  const hasChanges = initialContent !== originalContent;
+
+  const handleCancel = () => {
+    if (hasChanges) {
+      const confirmed = window.confirm(
+        "You have unsaved changes. Are you sure you want to discard them?",
+      );
+      if (!confirmed) return;
+    }
+    onUpdateScript(originalContent);
+    onCancel();
+  };
+
   return (
     <div className="flex-1 flex flex-col p-6">
       {/* Header */}
@@ -42,7 +59,7 @@ export function ScriptEditorArea({
           <Button onClick={onSave} disabled={isSaving}>
             {isSaving ? "Saving..." : "Save"}
           </Button>
-          <Button onClick={() => onUpdateScript("")} variant="outline">
+          <Button onClick={handleCancel} variant="outline">
             Cancel
           </Button>
         </div>

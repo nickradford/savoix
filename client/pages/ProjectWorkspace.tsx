@@ -6,9 +6,6 @@ import {
   Download,
   ArrowLeft,
   Mic,
-  Square,
-  ChevronLeft,
-  ChevronRight,
   Play,
   Trash2,
   Edit3,
@@ -20,8 +17,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { Slider } from "@/components/ui/slider";
-import { LiveWaveform } from "@/components/ui/live-waveform";
+import { FontControls } from "@/components/FontControls";
+import { RecordingControls } from "@/components/RecordingControls";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -31,15 +28,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+
 import { ScriptEditorArea } from "@/components/ScriptEditorArea";
 import { SegmentItem } from "@/components/SegmentList";
 import { TakeCard } from "@/components/ui/TakeCard";
 import { useTakeManager, type SegmentTake } from "@/hooks/useTakeManager";
+import { useFontSettings } from "@/hooks/useFontSettings";
 
 const SAMPLE_RATE = 16000;
 
@@ -383,11 +377,13 @@ export default function ProjectWorkspace() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isTranscribing, setIsTranscribing] = useState(false);
 
-  // Font preferences for script display
-  const [scriptFontFamily, setScriptFontFamily] = useState<
-    "sans" | "serif" | "mono" | "dyslexic"
-  >("sans");
-  const [scriptFontSize, setScriptFontSize] = useState(30); // in pixels
+  // Font preferences for script display (persisted in localStorage)
+  const {
+    fontFamily: scriptFontFamily,
+    setFontFamily: setScriptFontFamily,
+    fontSize: scriptFontSize,
+    setFontSize: setScriptFontSize,
+  } = useFontSettings();
 
   // Keyboard shortcuts help panel
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -920,108 +916,23 @@ export default function ProjectWorkspace() {
           {isEditingScript ? (
             <ScriptEditorArea
               initialContent={editedScript}
+              originalContent={project?.script || ""}
               onUpdateScript={setEditedScript}
               isSaving={isSavingScript}
               onSave={handleSaveScript}
+              onCancel={() => setIsEditingScript(false)}
             />
           ) : (
             <>
               <div className="flex-1 flex flex-col relative">
                 {/* Font Controls - Top Right */}
                 {currentSegment && (
-                  <div className="absolute top-4 right-4 flex items-center gap-3 bg-card/80 backdrop-blur-sm rounded-lg border border-border/50 px-3 py-2 shadow-sm z-10">
-                    {/* Font Family Buttons */}
-                    <div className="flex items-center gap-1">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant={
-                              scriptFontFamily === "sans"
-                                ? "secondary"
-                                : "ghost"
-                            }
-                            size="sm"
-                            onClick={() => setScriptFontFamily("sans")}
-                            className="h-7 px-2 text-xs font-sans"
-                          >
-                            Aa
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Sans-serif</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant={
-                              scriptFontFamily === "serif"
-                                ? "secondary"
-                                : "ghost"
-                            }
-                            size="sm"
-                            onClick={() => setScriptFontFamily("serif")}
-                            className="h-7 px-2 text-xs font-serif"
-                          >
-                            Aa
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Serif</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant={
-                              scriptFontFamily === "mono"
-                                ? "secondary"
-                                : "ghost"
-                            }
-                            size="sm"
-                            onClick={() => setScriptFontFamily("mono")}
-                            className="h-7 px-2 text-xs font-mono"
-                          >
-                            Aa
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Monospace</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant={
-                              scriptFontFamily === "dyslexic"
-                                ? "secondary"
-                                : "ghost"
-                            }
-                            size="sm"
-                            onClick={() => setScriptFontFamily("dyslexic")}
-                            className="h-7 px-2 text-[10px] font-dyslexic"
-                          >
-                            Aa
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          OpenDyslexic - easier reading
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-
-                    {/* Divider */}
-                    <div className="w-px h-5 bg-border" />
-
-                    {/* Font Size Slider */}
-                    <div className="flex items-center gap-2 w-24">
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {scriptFontSize}px
-                      </span>
-                      <Slider
-                        value={[scriptFontSize]}
-                        onValueChange={([value]) => setScriptFontSize(value)}
-                        min={16}
-                        max={72}
-                        step={2}
-                        className="flex-1"
-                      />
-                    </div>
-                  </div>
+                  <FontControls
+                    scriptFontFamily={scriptFontFamily}
+                    setScriptFontFamily={setScriptFontFamily}
+                    scriptFontSize={scriptFontSize}
+                    setScriptFontSize={setScriptFontSize}
+                  />
                 )}
 
                 <div className="flex-1 flex items-center justify-center p-12">
@@ -1060,97 +971,27 @@ export default function ProjectWorkspace() {
                   )}
                 </div>
 
-                <div className="border-t border-border/50 bg-card/50 px-6 py-5">
-                  <div className="max-w-xl mx-auto">
-                    <LiveWaveform
-                      active={isRecording}
-                      processing={isTranscribing}
-                      height={32}
-                      barWidth={2}
-                      barGap={1}
-                      mode="static"
-                      fadeEdges
-                      sensitivity={1.2}
-                      className="mb-5"
-                    />
-
-                    <div className="flex items-center justify-between">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          stopPlayback();
-                          setCurrentSegmentIndex((i) => Math.max(0, i - 1));
-                        }}
-                        disabled={currentSegmentIndex === 0 || isRecording}
-                        className="gap-1"
-                      >
-                        <ChevronLeft className="size-4" />
-                        Prev
-                      </Button>
-
-                      <div className="flex flex-col items-center gap-2">
-                        {isRecording && (
-                          <div className="flex items-center gap-2 text-destructive">
-                            <div className="size-2 rounded-full bg-destructive animate-pulse" />
-                            <span className="text-sm font-medium tabular-nums">
-                              {formatTime(recordingTime)}
-                            </span>
-                          </div>
-                        )}
-                        {isTranscribing && (
-                          <span className="text-xs text-muted-foreground">
-                            Transcribing...
-                          </span>
-                        )}
-
-                        {!isRecording ? (
-                          <Button
-                            onClick={startRecording}
-                            disabled={isTranscribing || !currentSegment}
-                            size="lg"
-                            className={cn(
-                              "gap-2 px-8",
-                              isTranscribing && "opacity-50 cursor-not-allowed",
-                            )}
-                          >
-                            <Mic className="size-4" />
-                            {isTranscribing ? "Transcribing..." : "Record"}
-                          </Button>
-                        ) : (
-                          <Button
-                            onClick={stopRecording}
-                            variant="destructive"
-                            size="lg"
-                            className="gap-2 px-8 animate-recording-pulse"
-                          >
-                            <Square className="size-4" />
-                            Stop
-                          </Button>
-                        )}
-                      </div>
-
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          stopPlayback();
-                          setCurrentSegmentIndex((i) =>
-                            Math.min(segments.length - 1, i + 1),
-                          );
-                        }}
-                        disabled={
-                          currentSegmentIndex === segments.length - 1 ||
-                          isRecording
-                        }
-                        className="gap-1"
-                      >
-                        Next
-                        <ChevronRight className="size-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                <RecordingControls
+                  isRecording={isRecording}
+                  isTranscribing={isTranscribing}
+                  recordingTime={recordingTime}
+                  currentSegmentIndex={currentSegmentIndex}
+                  totalSegments={segments.length}
+                  hasCurrentSegment={!!currentSegment}
+                  onStartRecording={startRecording}
+                  onStopRecording={stopRecording}
+                  onPrevSegment={() => {
+                    stopPlayback();
+                    setCurrentSegmentIndex((i) => Math.max(0, i - 1));
+                  }}
+                  onNextSegment={() => {
+                    stopPlayback();
+                    setCurrentSegmentIndex((i) =>
+                      Math.min(segments.length - 1, i + 1),
+                    );
+                  }}
+                  formatTime={formatTime}
+                />
               </div>
             </>
           )}

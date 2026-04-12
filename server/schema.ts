@@ -23,6 +23,7 @@ export const scriptSegments = sqliteTable("script_segments", {
     .references(() => projects.id, { onDelete: "cascade" }),
   index: integer("idx").notNull(),
   text: text("text").notNull(),
+  contentHash: text("content_hash").notNull(),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

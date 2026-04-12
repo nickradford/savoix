@@ -1,161 +1,181 @@
-import { useEffect, useRef, useState } from "react";
+import { Mic, Square, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Mic, Square } from "lucide-react";
+import { LiveWaveform } from "@/components/ui/live-waveform";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface RecordingControlsProps {
   isRecording: boolean;
-  onStartRecording: () => Promise<void>;
+  isTranscribing: boolean;
+  recordingTime: number;
+  currentSegmentIndex: number;
+  totalSegments: number;
+  hasCurrentSegment: boolean;
+  onStartRecording: () => void;
   onStopRecording: () => void;
-  recordingTime?: number;
+  onPrevSegment: () => void;
+  onNextSegment: () => void;
+  formatTime: (ms: number) => string;
 }
 
 export function RecordingControls({
   isRecording,
+  isTranscribing,
+  recordingTime,
+  currentSegmentIndex,
+  totalSegments,
+  hasCurrentSegment,
   onStartRecording,
   onStopRecording,
-  recordingTime = 0,
+  onPrevSegment,
+  onNextSegment,
+  formatTime,
 }: RecordingControlsProps) {
-  const analyzerRef = useRef<AnalyserNode | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>();
-  const [bars, setBars] = useState<number[]>(Array(30).fill(0));
-
-  useEffect(() => {
-    if (!isRecording) {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-      setBars(Array(30).fill(0));
-      return;
-    }
-
-    const animate = () => {
-      if (!analyzerRef.current || !canvasRef.current) {
-        animationRef.current = requestAnimationFrame(animate);
-        return;
-      }
-
-      const dataArray = new Uint8Array(analyzerRef.current.frequencyBinCount);
-      analyzerRef.current.getByteFrequencyData(dataArray);
-
-      const barCount = 30;
-      const newBars = Array(barCount)
-        .fill(0)
-        .map((_, i) => {
-          const index = Math.floor((i / barCount) * dataArray.length);
-          return dataArray[index] / 255;
-        });
-
-      setBars(newBars);
-
-      // Draw canvas
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "rgb(260, 90%, 56%)";
-
-        const barWidth = canvas.width / barCount;
-        newBars.forEach((bar, i) => {
-          const height = bar * canvas.height;
-          ctx.fillRect(
-            i * barWidth,
-            canvas.height - height,
-            barWidth - 2,
-            height,
-          );
-        });
-      }
-
-      animationRef.current = requestAnimationFrame(animate);
-    };
-
-    const setupAudio = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        const audioContext = new (
-          window.AudioContext || (window as any).webkitAudioContext
-        )();
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
-
-        const source = audioContext.createMediaStreamSource(stream);
-        source.connect(analyser);
-
-        analyzerRef.current = analyser;
-        animate();
-      } catch (error) {
-        console.error("Error setting up audio analysis:", error);
-      }
-    };
-
-    setupAudio();
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, [isRecording]);
-
-  const formatTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000);
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
+  const isFirstSegment = currentSegmentIndex === 0;
+  const isLastSegment = currentSegmentIndex === totalSegments - 1;
 
   return (
-    <div className="bg-card border border-border rounded-lg p-6 flex flex-col justify-between">
-      <div>
-        <h2 className="font-semibold text-foreground mb-6">Record</h2>
-
-        {/* Waveform visualization */}
-        <div className="mb-6 p-4 bg-muted rounded-lg flex items-center justify-center min-h-24">
-          {isRecording ? (
-            <canvas
-              ref={canvasRef}
-              width={280}
-              height={80}
-              className="w-full"
-            />
-          ) : (
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground">Ready to record</p>
-            </div>
+    <div className="border-t border-border/50 bg-card/50 px-6 py-5">
+      <div className="max-w-xl mx-auto">
+        {/* Waveform with fade-in and slide-up animation when active */}
+        <div
+          className={cn(
+            "transition-all duration-500 ease-out",
+            isRecording || isTranscribing
+              ? "opacity-100 translate-y-0 mb-5"
+              : "opacity-0 -translate-y-2 mb-0 pointer-events-none h-0 overflow-hidden",
           )}
+        >
+          <LiveWaveform
+            active={isRecording}
+            processing={isTranscribing}
+            height={32}
+            barWidth={2}
+            barGap={1}
+            mode="static"
+            fadeEdges
+            sensitivity={1.2}
+          />
         </div>
 
-        {/* Recording time display */}
-        {isRecording && (
-          <div className="mb-6 text-center">
-            <p className="text-lg font-semibold text-accent">
-              {formatTime(recordingTime)}
-            </p>
-          </div>
-        )}
+        <div className="flex items-center justify-between">
+          {/* Prev Button with Tooltip */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onPrevSegment}
+                disabled={isFirstSegment || isRecording}
+                className="gap-1"
+              >
+                <ChevronLeft className="size-4" />
+                Prev
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <div className="flex items-center gap-1.5">
+                Previous segment
+                <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-xs font-mono">
+                  ←
+                </kbd>
+              </div>
+            </TooltipContent>
+          </Tooltip>
 
-        {/* Recording Controls */}
-        <div className="space-y-3">
-          {!isRecording ? (
-            <Button
-              onClick={onStartRecording}
-              className="w-full gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
-            >
-              <Mic className="w-4 h-4" />
-              Start Recording
-            </Button>
-          ) : (
-            <Button
-              onClick={onStopRecording}
-              className="w-full gap-2 bg-red-600 hover:bg-red-700 text-white"
-            >
-              <Square className="w-4 h-4" />
-              Stop Recording
-            </Button>
-          )}
+          <div className="flex flex-col items-center gap-2">
+            {isRecording && (
+              <div className="flex items-center gap-2 text-destructive">
+                <div className="size-2 rounded-full bg-destructive animate-pulse" />
+                <span className="text-sm font-medium tabular-nums">
+                  {formatTime(recordingTime)}
+                </span>
+              </div>
+            )}
+            {isTranscribing && (
+              <span className="text-xs text-muted-foreground">
+                Transcribing...
+              </span>
+            )}
+
+            {/* Record/Stop Button with Tooltip */}
+            {!isRecording ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={onStartRecording}
+                    disabled={isTranscribing || !hasCurrentSegment}
+                    size="xl"
+                    className={cn(
+                      "gap-2 px-10",
+                      isTranscribing && "opacity-50 cursor-not-allowed",
+                    )}
+                  >
+                    <Mic className="size-5" />
+                    {isTranscribing ? "Transcribing..." : "Record"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="flex items-center gap-1.5">
+                    Start recording
+                    <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-xs font-mono">
+                      Space
+                    </kbd>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={onStopRecording}
+                    variant="destructive"
+                    size="xl"
+                    className="gap-2 px-10 animate-recording-pulse"
+                  >
+                    <Square className="size-5" />
+                    Stop
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="flex items-center gap-1.5">
+                    Stop recording
+                    <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-xs font-mono">
+                      Space
+                    </kbd>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+
+          {/* Next Button with Tooltip */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onNextSegment}
+                disabled={isLastSegment || isRecording}
+                className="gap-1"
+              >
+                Next
+                <ChevronRight className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <div className="flex items-center gap-1.5">
+                Next segment
+                <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-xs font-mono">
+                  →
+                </kbd>
+              </div>
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </div>

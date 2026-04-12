@@ -3,6 +3,7 @@ import { db } from "../db";
 import { projects, scriptSegments } from "../schema";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { hashContent, syncSegmentsWithScript } from "../services/segmentSync";
 
 export const getProjects: RequestHandler = async (_req, res) => {
   try {
@@ -46,6 +47,7 @@ export const createProject: RequestHandler = async (req, res) => {
         projectId,
         index,
         text: line,
+        contentHash: hashContent(line),
       }));
 
       await db.insert(scriptSegments).values(segmentsToInsert);
@@ -73,7 +75,9 @@ export const getProject: RequestHandler = async (req, res) => {
           orderBy: (scriptSegments, { asc }) => [asc(scriptSegments.index)],
           with: {
             takes: {
-              orderBy: (segmentTakes, { desc }) => [desc(segmentTakes.createdAt)],
+              orderBy: (segmentTakes, { desc }) => [
+                desc(segmentTakes.createdAt),
+              ],
             },
           },
         },
@@ -115,27 +119,9 @@ export const updateProject: RequestHandler = async (req, res) => {
       })
       .where(eq(projects.id, id));
 
-    // If script was updated, regenerate segments
+    // If script was updated, sync segments while preserving IDs based on content hash
     if (script !== undefined && script !== existingProject.script) {
-      // Delete existing segments
-      await db.delete(scriptSegments).where(eq(scriptSegments.projectId, id));
-
-      // Create new segments
-      const lines = script
-        .split("\n")
-        .map((line: string) => line.trim())
-        .filter((line: string) => line.length > 0);
-
-      if (lines.length > 0) {
-        const segmentsToInsert = lines.map((line: string, index: number) => ({
-          id: randomUUID(),
-          projectId: id,
-          index,
-          text: line,
-        }));
-
-        await db.insert(scriptSegments).values(segmentsToInsert);
-      }
+      await syncSegmentsWithScript(id, script);
     }
 
     const updatedProject = await db.query.projects.findFirst({
@@ -145,7 +131,9 @@ export const updateProject: RequestHandler = async (req, res) => {
           orderBy: (scriptSegments, { asc }) => [asc(scriptSegments.index)],
           with: {
             takes: {
-              orderBy: (segmentTakes, { desc }) => [desc(segmentTakes.createdAt)],
+              orderBy: (segmentTakes, { desc }) => [
+                desc(segmentTakes.createdAt),
+              ],
             },
           },
         },

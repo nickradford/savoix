@@ -3,6 +3,7 @@ import { db } from "../db";
 import { scriptSegments, segmentTakes } from "../schema";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { syncSegmentsWithScript } from "../services/segmentSync";
 
 export const getScriptSegments: RequestHandler = async (req, res) => {
   try {
@@ -34,27 +35,8 @@ export const updateScriptSegments: RequestHandler = async (req, res) => {
       return res.status(400).json({ error: "Script is required" });
     }
 
-    // Delete existing segments
-    await db
-      .delete(scriptSegments)
-      .where(eq(scriptSegments.projectId, projectId));
-
-    // Create new segments from script lines
-    const lines = script
-      .split("\n")
-      .map((line: string) => line.trim())
-      .filter((line: string) => line.length > 0);
-
-    if (lines.length > 0) {
-      const segmentsToInsert = lines.map((line: string, index: number) => ({
-        id: randomUUID(),
-        projectId,
-        index,
-        text: line,
-      }));
-
-      await db.insert(scriptSegments).values(segmentsToInsert);
-    }
+    // Sync segments while preserving IDs based on content hash
+    await syncSegmentsWithScript(projectId, script);
 
     // Return updated segments
     const segments = await db.query.scriptSegments.findMany({
