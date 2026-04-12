@@ -18,10 +18,11 @@ import {
   RefreshCw,
   AlertCircle,
   RotateCcw,
+  FileText,
+  MoreHorizontal,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { LiveWaveform } from "@/components/ui/live-waveform";
 import {
   TranscriptViewerAudio,
@@ -39,7 +40,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
+// Types
 interface ScriptSegment {
   id: string;
   projectId: string;
@@ -73,8 +77,6 @@ interface Project {
   createdAt: string;
 }
 
-const SAMPLE_RATE = 16000;
-
 type TimestampedWord = {
   word?: string;
   text?: string;
@@ -86,32 +88,16 @@ type TimestampedWord = {
   end_time?: number;
 };
 
-type TranscriptIssueKind =
-  | "mismatch"
-  | "insertion"
-  | "contraction"
-  | "skip-anchor";
+// Constants
+const SAMPLE_RATE = 16000;
 
-type TranscriptWordDiagnostic = {
-  issue?: TranscriptIssueKind;
-  expected?: string;
-  skippedExpectedBefore?: string[];
-};
-
-type TranscriptHeuristicAnalysis = {
-  confidence: number;
-  diagnostics: Map<number, TranscriptWordDiagnostic>;
-  trailingSkippedWords: string[];
-};
-
+// Helper functions
 function parseTakeWords(words: string | undefined): TimestampedWord[] {
   if (!words) return [];
-
   try {
     const parsed = JSON.parse(words);
     return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    console.error("Failed to parse take words:", error);
+  } catch {
     return [];
   }
 }
@@ -147,9 +133,7 @@ function expandWord(word: string): string[] {
     "let's": ["let", "us"],
   };
 
-  if (irregularMap[canonical]) {
-    return irregularMap[canonical];
-  }
+  if (irregularMap[canonical]) return irregularMap[canonical];
 
   if (canonical.endsWith("n't") && canonical.length > 3) {
     return [canonical.slice(0, -3), "not"];
@@ -181,7 +165,6 @@ function matchesExpandedSequence(
   if (expanded.length <= 1 || expanded.length !== comparisonWords.length) {
     return false;
   }
-
   return expanded.every((part, index) =>
     wordsEquivalent(part, comparisonWords[index] ?? ""),
   );
@@ -189,156 +172,6 @@ function matchesExpandedSequence(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
-}
-
-function upsertDiagnostic(
-  diagnostics: Map<number, TranscriptWordDiagnostic>,
-  actualWordIndex: number,
-  update: Partial<TranscriptWordDiagnostic>,
-) {
-  const existing = diagnostics.get(actualWordIndex) ?? {};
-  diagnostics.set(actualWordIndex, {
-    ...existing,
-    ...update,
-    skippedExpectedBefore: update.skippedExpectedBefore
-      ? [
-          ...(existing.skippedExpectedBefore ?? []),
-          ...update.skippedExpectedBefore,
-        ]
-      : existing.skippedExpectedBefore,
-  });
-}
-
-function analyzeTranscriptAgainstSegment(
-  expectedText: string,
-  actualText: string | undefined,
-): TranscriptHeuristicAnalysis | null {
-  const expectedWords = splitTranscriptWords(expectedText);
-  const actualWords = splitTranscriptWords(actualText);
-
-  if (!expectedWords.length || !actualWords.length) return null;
-
-  const diagnostics = new Map<number, TranscriptWordDiagnostic>();
-  const trailingSkippedWords: string[] = [];
-
-  let expectedIndex = 0;
-  let actualIndex = 0;
-  let mismatchCount = 0;
-  let insertionCount = 0;
-  let skippedCount = 0;
-  let contractionCount = 0;
-
-  while (
-    expectedIndex < expectedWords.length &&
-    actualIndex < actualWords.length
-  ) {
-    const expectedWord = expectedWords[expectedIndex];
-    const actualWord = actualWords[actualIndex];
-
-    if (wordsEquivalent(expectedWord, actualWord)) {
-      expectedIndex++;
-      actualIndex++;
-      continue;
-    }
-
-    if (
-      matchesExpandedSequence(
-        actualWord,
-        expectedWords.slice(expectedIndex, expectedIndex + 2),
-      )
-    ) {
-      upsertDiagnostic(diagnostics, actualIndex, {
-        issue: "contraction",
-        expected: `${expectedWords[expectedIndex]} ${expectedWords[expectedIndex + 1]}`,
-      });
-      contractionCount++;
-      expectedIndex += 2;
-      actualIndex++;
-      continue;
-    }
-
-    if (
-      matchesExpandedSequence(
-        expectedWord,
-        actualWords.slice(actualIndex, actualIndex + 2),
-      )
-    ) {
-      upsertDiagnostic(diagnostics, actualIndex, {
-        issue: "contraction",
-        expected: expectedWord,
-      });
-      upsertDiagnostic(diagnostics, actualIndex + 1, {
-        issue: "contraction",
-        expected: expectedWord,
-      });
-      contractionCount++;
-      expectedIndex++;
-      actualIndex += 2;
-      continue;
-    }
-
-    if (
-      expectedIndex + 1 < expectedWords.length &&
-      wordsEquivalent(expectedWords[expectedIndex + 1], actualWord)
-    ) {
-      upsertDiagnostic(diagnostics, actualIndex, {
-        issue: "skip-anchor",
-        skippedExpectedBefore: [expectedWord],
-      });
-      skippedCount++;
-      expectedIndex++;
-      continue;
-    }
-
-    if (
-      actualIndex + 1 < actualWords.length &&
-      wordsEquivalent(expectedWord, actualWords[actualIndex + 1])
-    ) {
-      upsertDiagnostic(diagnostics, actualIndex, {
-        issue: "insertion",
-        expected: expectedWord,
-      });
-      insertionCount++;
-      actualIndex++;
-      continue;
-    }
-
-    upsertDiagnostic(diagnostics, actualIndex, {
-      issue: "mismatch",
-      expected: expectedWord,
-    });
-    mismatchCount++;
-    expectedIndex++;
-    actualIndex++;
-  }
-
-  while (expectedIndex < expectedWords.length) {
-    trailingSkippedWords.push(expectedWords[expectedIndex]);
-    skippedCount++;
-    expectedIndex++;
-  }
-
-  while (actualIndex < actualWords.length) {
-    upsertDiagnostic(diagnostics, actualIndex, {
-      issue: "insertion",
-    });
-    insertionCount++;
-    actualIndex++;
-  }
-
-  const denominator = Math.max(expectedWords.length, actualWords.length, 1);
-  const weightedPenalty =
-    mismatchCount +
-    skippedCount +
-    insertionCount * 0.75 +
-    contractionCount * 0.25;
-  const confidence = clamp(1 - weightedPenalty / denominator, 0, 1);
-
-  return {
-    confidence,
-    diagnostics,
-    trailingSkippedWords,
-  };
 }
 
 function readTimestamp(
@@ -361,7 +194,6 @@ function appendAlignedText(
   end: number,
 ) {
   if (!text) return;
-
   const safeStart = Number.isFinite(start) ? start : 0;
   const safeEnd =
     Number.isFinite(end) && end > safeStart ? end : safeStart + 0.01;
@@ -391,25 +223,12 @@ function buildAlignmentFromTimedWords(
       const text = word.word ?? word.text ?? "";
       const start = readTimestamp(word, ["start", "startTime", "start_time"]);
       const end = readTimestamp(word, ["end", "endTime", "end_time"]);
-
-      if (!text || start === null) {
-        return null;
-      }
-
-      return {
-        text,
-        start,
-        end: end ?? start + 0.01,
-      };
+      if (!text || start === null) return null;
+      return { text, start, end: end ?? start + 0.01 };
     })
     .filter(
-      (
-        word,
-      ): word is {
-        text: string;
-        start: number;
-        end: number;
-      } => word !== null,
+      (word): word is { text: string; start: number; end: number } =>
+        word !== null,
     );
 
   if (!normalizedWords.length) return null;
@@ -419,9 +238,7 @@ function buildAlignmentFromTimedWords(
 
   for (const word of normalizedWords) {
     const tokenStartIndex = transcription.indexOf(word.text, cursor);
-    if (tokenStartIndex === -1) {
-      return null;
-    }
+    if (tokenStartIndex === -1) return null;
 
     if (tokenStartIndex > cursor) {
       appendAlignedText(
@@ -460,20 +277,17 @@ function buildEstimatedAlignment(
   durationSeconds: number,
 ): CharacterAlignmentResponseModel | null {
   if (!transcription?.trim()) return null;
-
   const alignment: CharacterAlignmentResponseModel = {
     characters: [],
     characterStartTimesSeconds: [],
     characterEndTimesSeconds: [],
   };
-
   appendAlignedText(
     alignment,
     transcription,
     0,
     Math.max(durationSeconds, transcription.length * 0.04, 0.01),
   );
-
   return alignment;
 }
 
@@ -488,7 +302,6 @@ function getTakeAlignment(
     parseTakeWords(take.words),
   );
   if (timedAlignment) return timedAlignment;
-
   return buildEstimatedAlignment(
     take.transcription,
     (take.audioDuration ?? 0) > 0
@@ -503,7 +316,6 @@ function getTakeDurationMs(
   if ((take.audioDuration ?? 0) > 0) {
     return Math.round((take.audioDuration ?? 0) * 1000);
   }
-
   return take.duration;
 }
 
@@ -564,6 +376,7 @@ function float32ToWavBlob(samples: Float32Array, sampleRate: number): Blob {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
+// Main component
 export default function ProjectWorkspace() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -593,8 +406,6 @@ export default function ProjectWorkspace() {
   const [retryingTranscription, setRetryingTranscription] = useState<
     Set<string>
   >(new Set());
-
-  // Keyboard-driven take focus
   const [focusedTakeIndex, setFocusedTakeIndex] = useState<number>(-1);
 
   // Recording refs
@@ -603,10 +414,9 @@ export default function ProjectWorkspace() {
   const streamRef = useRef<MediaStream | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch project and segments
+  // Fetch project
   useEffect(() => {
     if (!id) return;
-
     const fetchProject = async () => {
       try {
         const response = await fetch(`/api/projects/${id}`);
@@ -633,11 +443,10 @@ export default function ProjectWorkspace() {
         setIsLoading(false);
       }
     };
-
     fetchProject();
   }, [id, toast]);
 
-  // Cleanup audio on unmount
+  // Cleanup
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -647,7 +456,6 @@ export default function ProjectWorkspace() {
     };
   }, []);
 
-  // Reset focused take when switching segments
   useEffect(() => {
     setFocusedTakeIndex(-1);
   }, [currentSegmentIndex]);
@@ -705,19 +513,16 @@ export default function ProjectWorkspace() {
           }
           break;
         case "p":
+        case "P":
           e.preventDefault();
           if (playingTakeId) {
             stopPlayback();
-            break;
-          }
-
-          {
+          } else {
             const takes = segments[currentSegmentIndex]?.takes;
             const focusedTake =
               takes && focusedTakeIndex >= 0 && focusedTakeIndex < takes.length
                 ? takes[focusedTakeIndex]
                 : undefined;
-
             if (focusedTake && !focusedTake.deletedAt) {
               playTake(focusedTake);
             }
@@ -734,6 +539,8 @@ export default function ProjectWorkspace() {
     isRecording,
     isTranscribing,
     isEditingScript,
+    focusedTakeIndex,
+    playingTakeId,
   ]);
 
   const currentSegment = segments[currentSegmentIndex];
@@ -741,27 +548,20 @@ export default function ProjectWorkspace() {
   const toggleTakeExpansion = (takeId: string) => {
     setExpandedTakes((prev) => {
       const newSet = new Set(prev);
-      if (newSet.has(takeId)) {
-        newSet.delete(takeId);
-      } else {
-        newSet.add(takeId);
-      }
+      if (newSet.has(takeId)) newSet.delete(takeId);
+      else newSet.add(takeId);
       return newSet;
     });
   };
 
   const retryTranscription = async (take: SegmentTake) => {
     setRetryingTranscription((prev) => new Set(prev).add(take.id));
-
     try {
       const response = await fetch(`/api/takes/${take.id}/transcribe`, {
         method: "POST",
       });
-
       if (response.ok) {
         const updatedTake = await response.json();
-
-        // Update segments with new transcription
         setSegments((prev) =>
           prev.map((seg) =>
             seg.id === take.segmentId
@@ -774,12 +574,8 @@ export default function ProjectWorkspace() {
               : seg,
           ),
         );
-
         if (updatedTake.transcription) {
-          toast({
-            title: "Success",
-            description: "Transcription completed",
-          });
+          toast({ title: "Success", description: "Transcription completed" });
         } else {
           toast({
             title: "Warning",
@@ -812,7 +608,6 @@ export default function ProjectWorkspace() {
 
   const handleSaveScript = async () => {
     if (!project) return;
-
     setIsSavingScript(true);
     try {
       const response = await fetch(`/api/projects/${project.id}`, {
@@ -820,7 +615,6 @@ export default function ProjectWorkspace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ script: editedScript }),
       });
-
       if (response.ok) {
         const updatedProject = await response.json();
         setProject(updatedProject);
@@ -849,29 +643,19 @@ export default function ProjectWorkspace() {
     }
   };
 
-  const handleCancelEdit = () => {
-    setEditedScript(project?.script || "");
-    setIsEditingScript(false);
-  };
-
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-
       const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
       await audioCtx.audioWorklet.addModule("/pcm-recorder-processor.js");
-
       const source = audioCtx.createMediaStreamSource(stream);
       const worklet = new AudioWorkletNode(audioCtx, "pcm-recorder-processor");
       source.connect(worklet);
-
       audioCtxRef.current = audioCtx;
       workletNodeRef.current = worklet;
-
       setIsRecording(true);
       setRecordingTime(0);
-
       recordingIntervalRef.current = setInterval(() => {
         setRecordingTime((prev) => prev + 100);
       }, 100);
@@ -887,16 +671,13 @@ export default function ProjectWorkspace() {
 
   const stopRecording = () => {
     if (!workletNodeRef.current || !audioCtxRef.current) return;
-
     setIsRecording(false);
     if (recordingIntervalRef.current) {
       clearInterval(recordingIntervalRef.current);
       recordingIntervalRef.current = null;
     }
-
     const worklet = workletNodeRef.current;
     const audioCtx = audioCtxRef.current;
-
     worklet.port.onmessage = async (e) => {
       const samples = new Float32Array(e.data as ArrayBuffer);
       const wavBlob = float32ToWavBlob(samples, SAMPLE_RATE);
@@ -907,24 +688,17 @@ export default function ProjectWorkspace() {
       streamRef.current = null;
       await handleTranscription(wavBlob);
     };
-
     worklet.port.postMessage("flush");
   };
 
   const handleTranscription = async (audioBlob: Blob) => {
     if (!currentSegment) return;
-
     setIsTranscribing(true);
-
     try {
-      // Convert blob to base64
       const reader = new FileReader();
       reader.readAsDataURL(audioBlob);
-
       reader.onloadend = async () => {
         const base64Audio = reader.result as string;
-
-        // Send to server for transcription and save take
         const response = await fetch(
           `/api/segments/${currentSegment.id}/takes`,
           {
@@ -936,11 +710,8 @@ export default function ProjectWorkspace() {
             }),
           },
         );
-
         if (response.ok) {
           const take = await response.json();
-
-          // Update segments with new take
           setSegments((prev) =>
             prev.map((seg) =>
               seg.id === currentSegment.id
@@ -948,12 +719,9 @@ export default function ProjectWorkspace() {
                 : seg,
             ),
           );
-
-          // Auto-expand the new take if it has transcription or error
           if (take.transcription || take.transcriptionError) {
             setExpandedTakes((prev) => new Set(prev).add(take.id));
           }
-
           if (take.transcription) {
             toast({
               title: "Success",
@@ -973,7 +741,6 @@ export default function ProjectWorkspace() {
             variant: "destructive",
           });
         }
-
         setIsTranscribing(false);
       };
     } catch (error) {
@@ -993,7 +760,6 @@ export default function ProjectWorkspace() {
       audioRef.current.currentTime = 0;
       audioRef.current = null;
     }
-
     document
       .querySelectorAll<HTMLAudioElement>('[data-slot="transcript-audio"]')
       .forEach((audioElement) => {
@@ -1002,19 +768,14 @@ export default function ProjectWorkspace() {
           audioElement.currentTime = 0;
         }
       });
-
     setPlayingTakeId(null);
   };
 
   const playTake = (take: SegmentTake) => {
-    if (take.deletedAt) {
-      return;
-    }
-
+    if (take.deletedAt) return;
     const transcriptAudio = document.querySelector<HTMLAudioElement>(
       `[data-take-audio-id="${take.id}"]`,
     );
-
     if (transcriptAudio) {
       const isCurrentTakePlaying =
         playingTakeId === take.id && !transcriptAudio.paused;
@@ -1023,15 +784,12 @@ export default function ProjectWorkspace() {
         setPlayingTakeId(null);
         return;
       }
-
       stopPlayback(transcriptAudio);
       setExpandedTakes(new Set([take.id]));
       transcriptAudio.currentTime = 0;
       transcriptAudio
         .play()
-        .then(() => {
-          setPlayingTakeId(take.id);
-        })
+        .then(() => setPlayingTakeId(take.id))
         .catch(() => {
           toast({
             title: "Error",
@@ -1042,26 +800,17 @@ export default function ProjectWorkspace() {
         });
       return;
     }
-
     const isCurrentLegacyTakePlaying =
       playingTakeId === take.id && audioRef.current !== null;
-
     if (isCurrentLegacyTakePlaying) {
       stopPlayback();
       return;
     }
-
     stopPlayback();
     setExpandedTakes(new Set([take.id]));
-
-    // Construct URL to serve the audio file
     const audio = new Audio(`/api/recordings/${take.recordingId}`);
     audioRef.current = audio;
-
-    audio.onended = () => {
-      setPlayingTakeId(null);
-    };
-
+    audio.onended = () => setPlayingTakeId(null);
     audio.onerror = () => {
       toast({
         title: "Error",
@@ -1070,19 +819,16 @@ export default function ProjectWorkspace() {
       });
       setPlayingTakeId(null);
     };
-
     audio
       .play()
-      .then(() => {
-        setPlayingTakeId(take.id);
-      })
-      .catch(() => {
+      .then(() => setPlayingTakeId(take.id))
+      .catch(() =>
         toast({
           title: "Error",
           description: "Could not play audio file",
           variant: "destructive",
-        });
-      });
+        }),
+      );
   };
 
   const deleteTake = async (takeId: string) => {
@@ -1090,43 +836,24 @@ export default function ProjectWorkspace() {
       const response = await fetch(`/api/takes/${takeId}`, {
         method: "DELETE",
       });
-
       if (response.ok) {
         setSegments((prev) =>
           prev.map((seg) => ({
             ...seg,
             takes: seg.takes.map((t) =>
               t.id === takeId
-                ? {
-                    ...t,
-                    deletedAt: new Date().toISOString(),
-                  }
+                ? { ...t, deletedAt: new Date().toISOString() }
                 : t,
             ),
           })),
         );
-
         setExpandedTakes((prev) => {
           const next = new Set(prev);
           next.delete(takeId);
           return next;
         });
-        setFocusedTakeIndex((currentIndex) => {
-          const takes = segments[currentSegmentIndex]?.takes;
-          if (!takes || currentIndex < 0 || currentIndex >= takes.length) {
-            return currentIndex;
-          }
-
-          return takes[currentIndex]?.id === takeId ? -1 : currentIndex;
-        });
-        if (playingTakeId === takeId) {
-          stopPlayback();
-        }
-
-        toast({
-          title: "Success",
-          description: "Take deleted",
-        });
+        if (playingTakeId === takeId) stopPlayback();
+        toast({ title: "Success", description: "Take deleted" });
       } else {
         toast({
           title: "Error",
@@ -1149,10 +876,8 @@ export default function ProjectWorkspace() {
       const response = await fetch(`/api/takes/${takeId}/restore`, {
         method: "POST",
       });
-
       if (response.ok) {
         const restoredTake = await response.json();
-
         setSegments((prev) =>
           prev.map((seg) => ({
             ...seg,
@@ -1161,11 +886,7 @@ export default function ProjectWorkspace() {
             ),
           })),
         );
-
-        toast({
-          title: "Success",
-          description: "Take restored",
-        });
+        toast({ title: "Success", description: "Take restored" });
       } else {
         toast({
           title: "Error",
@@ -1183,18 +904,6 @@ export default function ProjectWorkspace() {
     }
   };
 
-  const goToNextSegment = () => {
-    if (currentSegmentIndex < segments.length - 1) {
-      setCurrentSegmentIndex((prev) => prev + 1);
-    }
-  };
-
-  const goToPrevSegment = () => {
-    if (currentSegmentIndex > 0) {
-      setCurrentSegmentIndex((prev) => prev - 1);
-    }
-  };
-
   const formatTime = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
     const mins = Math.floor(seconds / 60);
@@ -1202,27 +911,30 @@ export default function ProjectWorkspace() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Calculate segment count from edited script
   const segmentCount = editedScript
     .split("\n")
     .filter((line) => line.trim().length > 0).length;
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <p className="text-muted-foreground">Loading project...</p>
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm">Loading project...</span>
+        </div>
       </div>
     );
   }
 
   if (!project) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <p className="text-muted-foreground">Project not found</p>
           <Button
             onClick={() => navigate("/")}
             variant="outline"
+            size="sm"
             className="mt-4"
           >
             Back to Projects
@@ -1235,47 +947,55 @@ export default function ProjectWorkspace() {
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card px-6 py-4">
+      <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm px-6 py-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-              <ArrowLeft className="w-5 h-5" />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate("/")}
+              className="size-8"
+            >
+              <ArrowLeft className="size-4" />
             </Button>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">
+              <h1 className="text-base font-medium text-foreground">
                 {project.name}
               </h1>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Segment {currentSegmentIndex + 1} of {segments.length}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {!isEditingScript ? (
+            {!isEditingScript && (
               <Button
-                variant="outline"
+                variant="ghost"
+                size="sm"
                 onClick={() => setIsEditingScript(true)}
-                className="gap-2"
+                className="gap-1.5 text-muted-foreground hover:text-foreground"
               >
-                <Edit3 className="w-4 h-4" />
+                <Edit3 className="size-3.5" />
                 Edit Script
               </Button>
-            ) : null}
-
-            <ThemeToggle />
+            )}
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <Download className="w-4 h-4" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5 text-muted-foreground hover:text-foreground"
+                >
+                  <Download className="size-3.5" />
                   Export
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle>Export Project</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
+                <div className="py-4">
                   <p className="text-sm text-muted-foreground">
                     Export functionality coming soon.
                   </p>
@@ -1289,53 +1009,57 @@ export default function ProjectWorkspace() {
       {/* Main Workspace */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Script Segments List */}
-        <div className="w-80 border-r border-border bg-secondary flex flex-col">
-          <div className="px-4 py-3 border-b border-border bg-card flex items-center justify-between">
-            <h2 className="font-semibold text-sm">Script Segments</h2>
-            <span className="text-xs text-muted-foreground">
-              {segments.length} total
-            </span>
+        <div className="w-72 border-r border-border/50 bg-secondary/30 flex flex-col">
+          <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
+            <h2 className="text-sm font-medium">Segments</h2>
+            <Badge variant="secondary" className="text-xs font-normal">
+              {segments.length}
+            </Badge>
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
             {segments.map((segment, index) => (
-              <Button
+              <button
                 key={segment.id}
-                variant={index === currentSegmentIndex ? "secondary" : "ghost"}
                 onClick={() => setCurrentSegmentIndex(index)}
                 className={cn(
-                  "w-full justify-start h-auto py-3 px-3",
-                  segment.takes.length > 0 && "border-l-4 border-green-500",
+                  "w-full text-left px-3 py-2.5 rounded-md text-sm transition-colors",
+                  index === currentSegmentIndex
+                    ? "bg-secondary text-foreground"
+                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
                 )}
               >
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs opacity-60">
-                    {index + 1}
+                <div className="flex items-start gap-2.5">
+                  <span className="font-mono text-xs opacity-50 mt-0.5 tabular-nums">
+                    {String(index + 1).padStart(2, "0")}
                   </span>
-                  <span className="truncate">{segment.text}</span>
+                  <span className="truncate flex-1">{segment.text}</span>
                 </div>
                 {segment.takes.length > 0 && (
-                  <div className="mt-1 text-xs opacity-60">
-                    {segment.takes.length} take
-                    {segment.takes.length > 1 ? "s" : ""}
+                  <div className="mt-1 ml-6 text-xs opacity-50">
+                    {segment.takes.filter((t) => !t.deletedAt).length} take
+                    {segment.takes.filter((t) => !t.deletedAt).length !== 1
+                      ? "s"
+                      : ""}
                   </div>
                 )}
-              </Button>
+              </button>
             ))}
           </div>
         </div>
 
         {/* Center: Current Segment & Recording OR Script Editor */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col bg-background">
           {isEditingScript ? (
             /* Script Editor Mode */
-            <div className="flex-1 flex flex-col p-6 bg-card">
+            <div className="flex-1 flex flex-col p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-lg font-semibold">Edit Script</h2>
-                  <p className="text-sm text-muted-foreground">
+                  <h2 className="text-base font-medium">Edit Script</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     Each line becomes a recording segment.{" "}
                     {segmentCount > 0 && (
-                      <span className="text-accent">
+                      <span className="text-primary">
+                        {" "}
                         Will create {segmentCount} segment
                         {segmentCount !== 1 ? "s" : ""}.
                       </span>
@@ -1346,22 +1070,20 @@ export default function ProjectWorkspace() {
                   <Button
                     onClick={handleSaveScript}
                     disabled={isSavingScript}
-                    className="gap-2"
+                    size="sm"
                   >
-                    <Save className="w-4 h-4" />
-                    {isSavingScript ? "Saving..." : "Save Script"}
+                    <Save className="size-3.5 mr-1.5" />
+                    {isSavingScript ? "Saving..." : "Save"}
                   </Button>
                   <Button
-                    onClick={handleCancelEdit}
+                    onClick={() => setIsEditingScript(false)}
                     variant="outline"
-                    className="gap-2"
+                    size="sm"
                   >
-                    <X className="w-4 h-4" />
                     Cancel
                   </Button>
                 </div>
               </div>
-
               <Textarea
                 value={editedScript}
                 onChange={(e) => setEditedScript(e.target.value)}
@@ -1373,23 +1095,27 @@ export default function ProjectWorkspace() {
             /* Recording Mode */
             <>
               {/* Current Segment Display */}
-              <div className="flex-1 flex items-center justify-center p-12 bg-gradient-to-b from-card to-secondary">
+              <div className="flex-1 flex items-center justify-center p-12">
                 {currentSegment ? (
                   <div className="max-w-3xl w-full text-center">
-                    <p className="text-4xl font-medium text-foreground leading-relaxed">
+                    <p className="text-3xl font-medium text-foreground leading-relaxed tracking-tight">
                       {currentSegment.text}
                     </p>
                   </div>
                 ) : (
                   <div className="text-center">
+                    <div className="inline-flex items-center justify-center size-12 rounded-full bg-secondary mb-4">
+                      <FileText className="size-5 text-muted-foreground" />
+                    </div>
                     <p className="text-muted-foreground mb-4">
                       No segments in this project
                     </p>
                     <Button
                       onClick={() => setIsEditingScript(true)}
                       variant="outline"
+                      size="sm"
                     >
-                      <Edit3 className="w-4 h-4 mr-2" />
+                      <Edit3 className="size-3.5 mr-1.5" />
                       Add Script
                     </Button>
                   </div>
@@ -1397,80 +1123,94 @@ export default function ProjectWorkspace() {
               </div>
 
               {/* Recording Controls */}
-              <div className="border-t border-border bg-card p-6">
-                <div className="max-w-2xl mx-auto">
-                  {/* Navigation */}
-                  <div className="flex items-center justify-between mb-6">
-                    <Button
-                      variant="outline"
-                      onClick={goToPrevSegment}
-                      disabled={currentSegmentIndex === 0 || isRecording}
-                      className="gap-2"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                      Previous
-                    </Button>
-
-                    <div className="text-center">
-                      {isRecording && (
-                        <p className="text-lg font-semibold text-red-600">
-                          {formatTime(recordingTime)}
-                        </p>
-                      )}
-                      {isTranscribing && (
-                        <p className="text-sm text-muted-foreground">
-                          Transcribing...
-                        </p>
-                      )}
-                    </div>
-
-                    <Button
-                      variant="outline"
-                      onClick={goToNextSegment}
-                      disabled={
-                        currentSegmentIndex === segments.length - 1 ||
-                        isRecording
-                      }
-                      className="gap-2"
-                    >
-                      Next
-                      <ChevronRight className="w-4 h-4" />
-                    </Button>
-                  </div>
-
+              <div className="border-t border-border/50 bg-card/50 px-6 py-5">
+                <div className="max-w-xl mx-auto">
                   {/* Waveform */}
                   <LiveWaveform
                     active={isRecording}
                     processing={isTranscribing}
-                    height={40}
+                    height={32}
                     barWidth={2}
                     barGap={1}
                     mode="static"
                     fadeEdges
                     sensitivity={1.2}
-                    className="mb-4"
+                    className="mb-5"
                   />
 
-                  {/* Record Button */}
-                  <div className="flex justify-center">
-                    {!isRecording ? (
-                      <Button
-                        onClick={startRecording}
-                        disabled={isTranscribing || !currentSegment}
-                        className="gap-2 bg-red-600 hover:bg-red-700 text-white px-8 py-6 text-lg"
-                      >
-                        <Mic className="w-5 h-5" />
-                        {isTranscribing ? "Transcribing..." : "Record Take"}
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={stopRecording}
-                        className="gap-2 bg-neutral-700 hover:bg-neutral-800 text-white px-8 py-6 text-lg"
-                      >
-                        <Square className="w-5 h-5" />
-                        Stop Recording
-                      </Button>
-                    )}
+                  {/* Controls */}
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setCurrentSegmentIndex((i) => Math.max(0, i - 1))
+                      }
+                      disabled={currentSegmentIndex === 0 || isRecording}
+                      className="gap-1"
+                    >
+                      <ChevronLeft className="size-4" />
+                      Prev
+                    </Button>
+
+                    <div className="flex flex-col items-center gap-2">
+                      {isRecording && (
+                        <div className="flex items-center gap-2 text-destructive">
+                          <div className="size-2 rounded-full bg-destructive animate-pulse" />
+                          <span className="text-sm font-medium tabular-nums">
+                            {formatTime(recordingTime)}
+                          </span>
+                        </div>
+                      )}
+                      {isTranscribing && (
+                        <span className="text-xs text-muted-foreground">
+                          Transcribing...
+                        </span>
+                      )}
+
+                      {!isRecording ? (
+                        <Button
+                          onClick={startRecording}
+                          disabled={isTranscribing || !currentSegment}
+                          size="lg"
+                          className={cn(
+                            "gap-2 px-8",
+                            isTranscribing && "opacity-50 cursor-not-allowed",
+                          )}
+                        >
+                          <Mic className="size-4" />
+                          {isTranscribing ? "Transcribing..." : "Record"}
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={stopRecording}
+                          variant="destructive"
+                          size="lg"
+                          className="gap-2 px-8 animate-recording-pulse"
+                        >
+                          <Square className="size-4" />
+                          Stop
+                        </Button>
+                      )}
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setCurrentSegmentIndex((i) =>
+                          Math.min(segments.length - 1, i + 1),
+                        )
+                      }
+                      disabled={
+                        currentSegmentIndex === segments.length - 1 ||
+                        isRecording
+                      }
+                      className="gap-1"
+                    >
+                      Next
+                      <ChevronRight className="size-4" />
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -1478,314 +1218,212 @@ export default function ProjectWorkspace() {
           )}
         </div>
 
-        {/* Right: Takes for Current Segment (only show in recording mode) */}
+        {/* Right: Takes for Current Segment */}
         {!isEditingScript && (
-          <div className="w-96 border-l border-border bg-secondary flex flex-col">
-            <div className="px-4 py-3 border-b border-border bg-card">
-              <h2 className="font-semibold text-sm">
-                Takes for Segment {currentSegmentIndex + 1}
-              </h2>
+          <div className="w-80 border-l border-border/50 bg-secondary/30 flex flex-col">
+            <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
+              <h2 className="text-sm font-medium">Takes</h2>
+              <Badge variant="secondary" className="text-xs font-normal">
+                {currentSegment?.takes.filter((t) => !t.deletedAt).length || 0}
+              </Badge>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
-              {currentSegment?.takes.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">
-                    No takes recorded yet.
-                  </p>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {!currentSegment?.takes.length ? (
+                <div className="text-center py-12">
+                  <div className="inline-flex items-center justify-center size-10 rounded-full bg-secondary mb-3">
+                    <Mic className="size-4 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">No takes yet</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Click Record Take to start.
+                    Press space to record
                   </p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {currentSegment?.takes.map((take, index) => {
-                    const isExpanded = expandedTakes.has(take.id);
-                    const isRetrying = retryingTranscription.has(take.id);
-                    const isDeleted = !!take.deletedAt;
-                    const hasTranscription = !!take.transcription;
-                    const hasError =
-                      take.transcriptionError && !hasTranscription;
-                    const transcriptAlignment = getTakeAlignment(take);
-                    const transcriptAnalysis = analyzeTranscriptAgainstSegment(
-                      currentSegment.text,
-                      take.transcription,
-                    );
-                    const displayConfidence =
-                      transcriptAnalysis?.confidence ?? take.confidence;
-                    const cardClassName = cn(
-                      "bg-card rounded-lg border overflow-hidden",
-                      isDeleted && "opacity-70",
-                      focusedTakeIndex === index
-                        ? "border-primary ring-1 ring-primary"
-                        : "border-border",
-                    );
-                    const headerContent = (
-                      <div className="p-3 flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
+                currentSegment.takes.map((take, index) => {
+                  const isExpanded = expandedTakes.has(take.id);
+                  const isDeleted = !!take.deletedAt;
+                  const hasTranscription = !!take.transcription;
+                  const hasError = take.transcriptionError && !hasTranscription;
+                  const transcriptAlignment = getTakeAlignment(take);
+                  const isRetrying = retryingTranscription.has(take.id);
+
+                  const isFocused = focusedTakeIndex === index;
+
+                  return (
+                    <div
+                      key={take.id}
+                      className={cn(
+                        "bg-card border rounded-lg overflow-hidden transition-all",
+                        isDeleted ? "opacity-60" : "border-border",
+                        !isDeleted && "hover:border-primary/20",
+                        isFocused && "ring-1 ring-primary border-primary/30",
+                      )}
+                    >
+                      {/* Take Header */}
+                      <div className="p-3">
+                        <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <p className="font-medium text-sm">
+                            <span className="text-sm font-medium">
                               Take{" "}
                               {take.takeNumber ??
                                 currentSegment.takes.length - index}
-                            </p>
+                            </span>
                             {hasTranscription && (
-                              <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full">
-                                Transcribed
-                              </span>
+                              <Badge
+                                variant="secondary"
+                                className="text-xs font-normal bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0"
+                              >
+                                Done
+                              </Badge>
                             )}
                             {isDeleted && (
-                              <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
+                              <Badge
+                                variant="secondary"
+                                className="text-xs font-normal"
+                              >
                                 Deleted
-                              </span>
-                            )}
-                            {hasError && (
-                              <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                <AlertCircle className="w-3 h-3" />
-                                No transcription
-                              </span>
+                              </Badge>
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {formatTime(getTakeDurationMs(take))} •{" "}
-                            {new Date(take.createdAt).toLocaleDateString()}
-                          </p>
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {formatTime(getTakeDurationMs(take))}
+                          </span>
                         </div>
+
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => playTake(take)}
-                            className="h-8 w-8 p-0"
                             disabled={isDeleted}
+                            className="h-7 px-2 text-xs"
                           >
                             {playingTakeId === take.id ? (
-                              <Square className="w-4 h-4" />
+                              <Square className="size-3 mr-1" />
                             ) : (
-                              <Play className="w-4 h-4" />
+                              <Play className="size-3 mr-1" />
                             )}
+                            {playingTakeId === take.id ? "Stop" : "Play"}
                           </Button>
+
                           {isDeleted ? (
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => restoreTake(take.id)}
-                              className="h-8 w-8 p-0 text-foreground"
+                              className="h-7 px-2 text-xs"
                             >
-                              <RotateCcw className="w-4 h-4" />
+                              <RotateCcw className="size-3 mr-1" />
+                              Restore
                             </Button>
                           ) : (
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => deleteTake(take.id)}
-                              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                              className="h-7 px-2 text-xs text-destructive hover:text-destructive"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="size-3 mr-1" />
+                              Delete
                             </Button>
                           )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              if (!isDeleted) {
-                                toggleTakeExpansion(take.id);
-                              }
-                            }}
-                            className="h-8 w-8 p-0"
-                            disabled={isDeleted}
-                          >
-                            {isExpanded ? (
-                              <ChevronUp className="w-4 h-4" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4" />
-                            )}
-                          </Button>
+
+                          {!isDeleted && hasTranscription && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleTakeExpansion(take.id)}
+                              className="h-7 px-2 text-xs ml-auto"
+                            >
+                              {isExpanded ? (
+                                <>
+                                  <ChevronUp className="size-3 mr-1" />
+                                  Hide
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="size-3 mr-1" />
+                                  Text
+                                </>
+                              )}
+                            </Button>
+                          )}
                         </div>
                       </div>
-                    );
-                    const expandedContent = isExpanded && !isDeleted && (
-                      <div className="px-3 pb-3 border-t border-border pt-2">
-                        {hasTranscription ? (
-                          <div className="space-y-3">
-                            {transcriptAlignment ? (
-                              <div className="space-y-3 rounded-md border border-border bg-background p-3">
+
+                      {/* Expanded Content */}
+                      {isExpanded &&
+                        !isDeleted &&
+                        hasTranscription &&
+                        transcriptAlignment && (
+                          <div className="px-3 pb-3 border-t border-border/50 pt-2">
+                            <TranscriptViewerContainer
+                              audioSrc={`/api/recordings/${take.recordingId}`}
+                              audioType="audio/wav"
+                              alignment={transcriptAlignment}
+                              onPlay={() => setPlayingTakeId(take.id)}
+                              onPause={() =>
+                                setPlayingTakeId((id) =>
+                                  id === take.id ? null : id,
+                                )
+                              }
+                              onEnded={() =>
+                                setPlayingTakeId((id) =>
+                                  id === take.id ? null : id,
+                                )
+                              }
+                              className="space-y-0"
+                            >
+                              <div className="rounded-md border border-border/50 bg-secondary/50 p-2.5 mb-2">
                                 <TranscriptViewerScrubBar
                                   className="w-full"
                                   labelsClassName="text-[10px]"
                                 />
-                                <TranscriptViewerWords
-                                  className="text-sm leading-6"
-                                  renderWord={({ word, status }) => {
-                                    const diagnostic =
-                                      transcriptAnalysis?.diagnostics.get(
-                                        word.wordIndex,
-                                      );
-                                    const titleParts: string[] = [];
-
-                                    if (diagnostic?.expected) {
-                                      titleParts.push(
-                                        `Expected: ${diagnostic.expected}`,
-                                      );
-                                    }
-
-                                    if (
-                                      diagnostic?.skippedExpectedBefore?.length
-                                    ) {
-                                      titleParts.push(
-                                        `Missing before this: ${diagnostic.skippedExpectedBefore.join(", ")}`,
-                                      );
-                                    }
-
-                                    return (
-                                      <TranscriptViewerWord
-                                        word={word}
-                                        status={status}
-                                        className={cn(
-                                          diagnostic?.issue === "mismatch" &&
-                                            "bg-red-100 text-red-900 decoration-red-500/80 underline decoration-2 underline-offset-4",
-                                          diagnostic?.issue === "insertion" &&
-                                            "bg-amber-100 text-amber-900 decoration-amber-500/80 underline decoration-2 underline-offset-4",
-                                          diagnostic?.issue === "contraction" &&
-                                            "bg-yellow-100 text-yellow-900 decoration-yellow-500/80 underline decoration-2 underline-offset-4",
-                                          diagnostic?.issue === "skip-anchor" &&
-                                            "ring-1 ring-red-300",
-                                        )}
-                                        title={
-                                          titleParts.length > 0
-                                            ? titleParts.join(" • ")
-                                            : undefined
-                                        }
-                                      />
-                                    );
-                                  }}
-                                />
-                                {transcriptAnalysis?.trailingSkippedWords
-                                  .length ? (
-                                  <p className="text-xs text-red-700">
-                                    Missing at end:{" "}
-                                    {transcriptAnalysis.trailingSkippedWords.join(
-                                      ", ",
-                                    )}
-                                  </p>
-                                ) : null}
+                                <TranscriptViewerWords className="text-xs leading-5 mt-2" />
                               </div>
-                            ) : (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">
-                                  Transcription:
-                                </p>
-                                <p className="text-sm italic text-foreground">
-                                  &quot;{take.transcription}&quot;
-                                </p>
-                              </div>
-                            )}
-                            {displayConfidence !== undefined && (
-                              <p className="text-xs text-muted-foreground">
-                                Confidence:{" "}
-                                {Math.round(displayConfidence * 100)}%
+                              <TranscriptViewerAudio
+                                className="hidden"
+                                data-take-audio-id={take.id}
+                              />
+                            </TranscriptViewerContainer>
+                            {take.confidence !== undefined && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Confidence: {Math.round(take.confidence * 100)}%
                               </p>
                             )}
                           </div>
-                        ) : hasError ? (
-                          <div>
-                            <div className="flex items-center gap-2 text-amber-600 mb-2">
-                              <AlertCircle className="w-4 h-4" />
-                              <p className="text-sm">Transcription failed</p>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => retryTranscription(take)}
-                              disabled={isRetrying}
-                              className="gap-2"
-                            >
-                              <RefreshCw
-                                className={cn(
-                                  "w-4 h-4",
-                                  isRetrying && "animate-spin",
-                                )}
-                              />
-                              {isRetrying
-                                ? "Retrying..."
-                                : "Retry Transcription"}
-                            </Button>
-                          </div>
-                        ) : (
-                          <div>
-                            <p className="text-sm text-muted-foreground mb-2">
-                              No transcription available.
-                            </p>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => retryTranscription(take)}
-                              disabled={isRetrying}
-                              className="gap-2"
-                            >
-                              <RefreshCw
-                                className={cn(
-                                  "w-4 h-4",
-                                  isRetrying && "animate-spin",
-                                )}
-                              />
-                              {isRetrying
-                                ? "Transcribing..."
-                                : "Transcribe Now"}
-                            </Button>
-                          </div>
                         )}
-                      </div>
-                    );
 
-                    if (transcriptAlignment) {
-                      return (
-                        <TranscriptViewerContainer
-                          key={take.id}
-                          audioSrc={`/api/recordings/${take.recordingId}`}
-                          audioType="audio/wav"
-                          alignment={transcriptAlignment}
-                          onPlay={() => setPlayingTakeId(take.id)}
-                          onPause={() =>
-                            setPlayingTakeId((currentId) =>
-                              currentId === take.id ? null : currentId,
-                            )
-                          }
-                          onEnded={() =>
-                            setPlayingTakeId((currentId) =>
-                              currentId === take.id ? null : currentId,
-                            )
-                          }
-                          className={cn("space-y-0 p-0", cardClassName)}
-                        >
-                          {headerContent}
-                          {expandedContent}
-                          <TranscriptViewerAudio
-                            className="hidden"
-                            data-take-audio-id={take.id}
-                            onError={() => {
-                              toast({
-                                title: "Error",
-                                description: "Could not play audio file",
-                                variant: "destructive",
-                              });
-                              setPlayingTakeId((currentId) =>
-                                currentId === take.id ? null : currentId,
-                              );
-                            }}
-                          />
-                        </TranscriptViewerContainer>
-                      );
-                    }
-
-                    return (
-                      <div key={take.id} className={cardClassName}>
-                        {headerContent}
-                        {expandedContent}
-                      </div>
-                    );
-                  })}
-                </div>
+                      {/* Error State */}
+                      {hasError && !isDeleted && (
+                        <div className="px-3 pb-3 border-t border-border/50 pt-2">
+                          <div className="flex items-center gap-1.5 text-amber-600 mb-2">
+                            <AlertCircle className="size-3.5" />
+                            <span className="text-xs">
+                              Transcription failed
+                            </span>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => retryTranscription(take)}
+                            disabled={isRetrying}
+                            className="h-7 text-xs"
+                          >
+                            <RefreshCw
+                              className={cn(
+                                "size-3 mr-1",
+                                isRetrying && "animate-spin",
+                              )}
+                            />
+                            {isRetrying ? "Retrying..." : "Retry"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
