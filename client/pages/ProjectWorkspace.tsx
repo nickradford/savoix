@@ -38,6 +38,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 interface ScriptSegment {
   id: string;
@@ -128,7 +129,10 @@ function canonicalizeWord(word: string): string {
 }
 
 function wordsEquivalent(left: string, right: string): boolean {
-  return canonicalizeWord(left).replace(/'/g, "") === canonicalizeWord(right).replace(/'/g, "");
+  return (
+    canonicalizeWord(left).replace(/'/g, "") ===
+    canonicalizeWord(right).replace(/'/g, "")
+  );
 }
 
 function expandWord(word: string): string[] {
@@ -169,7 +173,10 @@ function expandWord(word: string): string[] {
   return [canonical];
 }
 
-function matchesExpandedSequence(sourceWord: string, comparisonWords: string[]): boolean {
+function matchesExpandedSequence(
+  sourceWord: string,
+  comparisonWords: string[],
+): boolean {
   const expanded = expandWord(sourceWord);
   if (expanded.length <= 1 || expanded.length !== comparisonWords.length) {
     return false;
@@ -221,7 +228,10 @@ function analyzeTranscriptAgainstSegment(
   let skippedCount = 0;
   let contractionCount = 0;
 
-  while (expectedIndex < expectedWords.length && actualIndex < actualWords.length) {
+  while (
+    expectedIndex < expectedWords.length &&
+    actualIndex < actualWords.length
+  ) {
     const expectedWord = expectedWords[expectedIndex];
     const actualWord = actualWords[actualIndex];
 
@@ -232,7 +242,10 @@ function analyzeTranscriptAgainstSegment(
     }
 
     if (
-      matchesExpandedSequence(actualWord, expectedWords.slice(expectedIndex, expectedIndex + 2))
+      matchesExpandedSequence(
+        actualWord,
+        expectedWords.slice(expectedIndex, expectedIndex + 2),
+      )
     ) {
       upsertDiagnostic(diagnostics, actualIndex, {
         issue: "contraction",
@@ -245,7 +258,10 @@ function analyzeTranscriptAgainstSegment(
     }
 
     if (
-      matchesExpandedSequence(expectedWord, actualWords.slice(actualIndex, actualIndex + 2))
+      matchesExpandedSequence(
+        expectedWord,
+        actualWords.slice(actualIndex, actualIndex + 2),
+      )
     ) {
       upsertDiagnostic(diagnostics, actualIndex, {
         issue: "contraction",
@@ -312,7 +328,10 @@ function analyzeTranscriptAgainstSegment(
 
   const denominator = Math.max(expectedWords.length, actualWords.length, 1);
   const weightedPenalty =
-    mismatchCount + skippedCount + insertionCount * 0.75 + contractionCount * 0.25;
+    mismatchCount +
+    skippedCount +
+    insertionCount * 0.75 +
+    contractionCount * 0.25;
   const confidence = clamp(1 - weightedPenalty / denominator, 0, 1);
 
   return {
@@ -459,7 +478,10 @@ function buildEstimatedAlignment(
 }
 
 function getTakeAlignment(
-  take: Pick<SegmentTake, "words" | "transcription" | "audioDuration" | "duration">,
+  take: Pick<
+    SegmentTake,
+    "words" | "transcription" | "audioDuration" | "duration"
+  >,
 ): CharacterAlignmentResponseModel | null {
   const timedAlignment = buildAlignmentFromTimedWords(
     take.transcription,
@@ -469,7 +491,9 @@ function getTakeAlignment(
 
   return buildEstimatedAlignment(
     take.transcription,
-    (take.audioDuration ?? 0) > 0 ? take.audioDuration ?? 0 : take.duration / 1000,
+    (take.audioDuration ?? 0) > 0
+      ? (take.audioDuration ?? 0)
+      : take.duration / 1000,
   );
 }
 
@@ -631,7 +655,8 @@ export default function ProjectWorkspace() {
   // Auto-play take when navigating with keyboard
   useEffect(() => {
     const takes = segments[currentSegmentIndex]?.takes;
-    if (!takes || focusedTakeIndex < 0 || focusedTakeIndex >= takes.length) return;
+    if (!takes || focusedTakeIndex < 0 || focusedTakeIndex >= takes.length)
+      return;
     playTake(takes[focusedTakeIndex]);
   }, [focusedTakeIndex, currentSegmentIndex]);
 
@@ -703,7 +728,13 @@ export default function ProjectWorkspace() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [segments, currentSegmentIndex, isRecording, isTranscribing, isEditingScript]);
+  }, [
+    segments,
+    currentSegmentIndex,
+    isRecording,
+    isTranscribing,
+    isEditingScript,
+  ]);
 
   const currentSegment = segments[currentSegmentIndex];
 
@@ -985,7 +1016,8 @@ export default function ProjectWorkspace() {
     );
 
     if (transcriptAudio) {
-      const isCurrentTakePlaying = playingTakeId === take.id && !transcriptAudio.paused;
+      const isCurrentTakePlaying =
+        playingTakeId === take.id && !transcriptAudio.paused;
       if (isCurrentTakePlaying) {
         transcriptAudio.pause();
         setPlayingTakeId(null);
@@ -1206,12 +1238,9 @@ export default function ProjectWorkspace() {
       <header className="border-b border-border bg-card px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate("/")}
-              className="text-muted-foreground hover:text-foreground"
-            >
+            <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
               <ArrowLeft className="w-5 h-5" />
-            </button>
+            </Button>
             <div>
               <h1 className="text-2xl font-bold text-foreground">
                 {project.name}
@@ -1269,14 +1298,12 @@ export default function ProjectWorkspace() {
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {segments.map((segment, index) => (
-              <button
+              <Button
                 key={segment.id}
+                variant={index === currentSegmentIndex ? "secondary" : "ghost"}
                 onClick={() => setCurrentSegmentIndex(index)}
                 className={cn(
-                  "w-full text-left p-3 rounded-lg text-sm transition-colors",
-                  index === currentSegmentIndex
-                    ? "bg-accent text-accent-foreground"
-                    : "bg-card hover:bg-accent/50",
+                  "w-full justify-start h-auto py-3 px-3",
                   segment.takes.length > 0 && "border-l-4 border-green-500",
                 )}
               >
@@ -1292,7 +1319,7 @@ export default function ProjectWorkspace() {
                     {segment.takes.length > 1 ? "s" : ""}
                   </div>
                 )}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -1335,11 +1362,11 @@ export default function ProjectWorkspace() {
                 </div>
               </div>
 
-              <textarea
+              <Textarea
                 value={editedScript}
                 onChange={(e) => setEditedScript(e.target.value)}
                 placeholder="Paste your script here... Each line will become a separate recording segment."
-                className="flex-1 w-full p-4 border border-border rounded-lg resize-none font-mono text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-accent"
+                className="flex-1 font-mono text-sm leading-relaxed resize-none"
               />
             </div>
           ) : (
@@ -1498,7 +1525,9 @@ export default function ProjectWorkspace() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="font-medium text-sm">
-                              Take {take.takeNumber ?? currentSegment.takes.length - index}
+                              Take{" "}
+                              {take.takeNumber ??
+                                currentSegment.takes.length - index}
                             </p>
                             {hasTranscription && (
                               <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full">
@@ -1588,16 +1617,21 @@ export default function ProjectWorkspace() {
                                 <TranscriptViewerWords
                                   className="text-sm leading-6"
                                   renderWord={({ word, status }) => {
-                                    const diagnostic = transcriptAnalysis?.diagnostics.get(
-                                      word.wordIndex,
-                                    );
+                                    const diagnostic =
+                                      transcriptAnalysis?.diagnostics.get(
+                                        word.wordIndex,
+                                      );
                                     const titleParts: string[] = [];
 
                                     if (diagnostic?.expected) {
-                                      titleParts.push(`Expected: ${diagnostic.expected}`);
+                                      titleParts.push(
+                                        `Expected: ${diagnostic.expected}`,
+                                      );
                                     }
 
-                                    if (diagnostic?.skippedExpectedBefore?.length) {
+                                    if (
+                                      diagnostic?.skippedExpectedBefore?.length
+                                    ) {
                                       titleParts.push(
                                         `Missing before this: ${diagnostic.skippedExpectedBefore.join(", ")}`,
                                       );
@@ -1626,10 +1660,13 @@ export default function ProjectWorkspace() {
                                     );
                                   }}
                                 />
-                                {transcriptAnalysis?.trailingSkippedWords.length ? (
+                                {transcriptAnalysis?.trailingSkippedWords
+                                  .length ? (
                                   <p className="text-xs text-red-700">
                                     Missing at end:{" "}
-                                    {transcriptAnalysis.trailingSkippedWords.join(", ")}
+                                    {transcriptAnalysis.trailingSkippedWords.join(
+                                      ", ",
+                                    )}
                                   </p>
                                 ) : null}
                               </div>
@@ -1645,7 +1682,8 @@ export default function ProjectWorkspace() {
                             )}
                             {displayConfidence !== undefined && (
                               <p className="text-xs text-muted-foreground">
-                                Confidence: {Math.round(displayConfidence * 100)}%
+                                Confidence:{" "}
+                                {Math.round(displayConfidence * 100)}%
                               </p>
                             )}
                           </div>
@@ -1691,7 +1729,9 @@ export default function ProjectWorkspace() {
                                   isRetrying && "animate-spin",
                                 )}
                               />
-                              {isRetrying ? "Transcribing..." : "Transcribe Now"}
+                              {isRetrying
+                                ? "Transcribing..."
+                                : "Transcribe Now"}
                             </Button>
                           </div>
                         )}
@@ -1739,10 +1779,7 @@ export default function ProjectWorkspace() {
                     }
 
                     return (
-                      <div
-                        key={take.id}
-                        className={cardClassName}
-                      >
+                      <div key={take.id} className={cardClassName}>
                         {headerContent}
                         {expandedContent}
                       </div>

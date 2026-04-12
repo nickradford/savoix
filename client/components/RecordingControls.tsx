@@ -62,7 +62,7 @@ export function RecordingControls({
             i * barWidth,
             canvas.height - height,
             barWidth - 2,
-            height
+            height,
           );
         });
       }
@@ -75,8 +75,9 @@ export function RecordingControls({
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
         });
-        const audioContext = new (window.AudioContext ||
-          (window as any).webkitAudioContext)();
+        const audioContext = new (
+          window.AudioContext || (window as any).webkitAudioContext
+        )();
         const analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
 
@@ -107,12 +108,12 @@ export function RecordingControls({
   };
 
   return (
-    <div className="bg-white border border-border rounded-lg p-6 flex flex-col justify-between">
+    <div className="bg-card border border-border rounded-lg p-6 flex flex-col justify-between">
       <div>
         <h2 className="font-semibold text-foreground mb-6">Record</h2>
 
         {/* Waveform visualization */}
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg flex items-center justify-center min-h-24">
+        <div className="mb-6 p-4 bg-muted rounded-lg flex items-center justify-center min-h-24">
           {isRecording ? (
             <canvas
               ref={canvasRef}
@@ -122,9 +123,7 @@ export function RecordingControls({
             />
           ) : (
             <div className="text-center">
-              <p className="text-sm text-muted-foreground">
-                Ready to record
-              </p>
+              <p className="text-sm text-muted-foreground">Ready to record</p>
             </div>
           )}
         </div>

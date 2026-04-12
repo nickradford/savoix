@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Project {
   id: string;
@@ -172,12 +174,11 @@ export default function Index() {
                 <label className="block text-sm font-medium text-foreground mb-1">
                   Project Name *
                 </label>
-                <input
+                <Input
                   type="text"
                   placeholder="My Script Project"
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}
-                  className="w-full px-4 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
                   autoFocus
                 />
               </div>
@@ -190,12 +191,12 @@ export default function Index() {
                   Paste your script here. Each line will become a separate
                   recording segment.
                 </p>
-                <textarea
+                <Textarea
                   placeholder="Welcome to our video...&#10;In this tutorial we'll learn...&#10;Let's get started..."
                   value={newProjectScript}
                   onChange={(e) => setNewProjectScript(e.target.value)}
                   rows={8}
-                  className="w-full px-4 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-accent font-mono text-sm resize-none"
+                  className="font-mono resize-none"
                 />
                 {newProjectScript.trim() && (
                   <p className="text-xs text-muted-foreground mt-1">
@@ -276,9 +277,13 @@ export default function Index() {
                     </h3>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button className="text-muted-foreground hover:text-foreground">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                        >
                           <MoreVertical className="w-4 h-4" />
-                        </button>
+                        </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
