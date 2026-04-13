@@ -24,6 +24,7 @@ A script recording and transcription application designed for precise dialogue r
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) (with pnpm)
+- [FFMPEG](https://ffmpeg.org/) - Required for audio export functionality
 - [Parakeet](https://github.com/yashhere/parakeet-mlx-fastapi) transcription server
 
 ### Setup

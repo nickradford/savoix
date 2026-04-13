@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useHotkey } from "@tanstack/react-hotkeys";
 import {
   Play,
   Pause,
@@ -246,82 +247,65 @@ export function ExportModal({
   }, [isPlaying, currentSegmentIndex]);
 
   // Keyboard shortcuts for export modal
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
+  useHotkey(
+    "Space",
+    (event) => {
+      const tag = (event.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      event.preventDefault();
+      togglePlayback();
+    },
+    { enabled: isOpen },
+  );
 
-      switch (e.key) {
-        case " ":
-          e.preventDefault();
-          togglePlayback();
-          break;
-        case "p":
-        case "P":
-          e.preventDefault();
-          togglePlayback();
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          if (playableSegments.length > 0) {
-            const newIndex = Math.max(0, currentSegmentIndex - 1);
-            stopCurrentAudio();
-            playNextSegment(newIndex);
-          }
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          if (playableSegments.length > 0) {
-            // If at index 0 and not yet playing, start from the first segment
-            // Otherwise move to next segment
-            const newIndex =
-              currentSegmentIndex === 0 && !isPlaying
-                ? 0
-                : Math.min(
-                    playableSegments.length - 1,
-                    currentSegmentIndex + 1,
-                  );
-            stopCurrentAudio();
-            playNextSegment(newIndex);
-          }
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          if (playableSegments.length > 0) {
-            // If at index 0 and not yet playing, start from the first segment
-            // Otherwise move to next segment
-            const newIndex =
-              currentSegmentIndex === 0 && !isPlaying
-                ? 0
-                : Math.min(
-                    playableSegments.length - 1,
-                    currentSegmentIndex + 1,
-                  );
-            stopCurrentAudio();
-            playNextSegment(newIndex);
-          }
-          break;
-        case "Escape":
-          e.preventDefault();
-          onClose();
-          break;
-      }
-    };
+  useHotkey(
+    "P",
+    (event) => {
+      const tag = (event.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      event.preventDefault();
+      togglePlayback();
+    },
+    { enabled: isOpen },
+  );
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    isOpen,
-    isPlaying,
-    currentSegmentIndex,
-    playableSegments.length,
-    togglePlayback,
-    stopCurrentAudio,
-    playNextSegment,
-    onClose,
-  ]);
+  useHotkey(
+    "ArrowUp",
+    (event) => {
+      const tag = (event.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      event.preventDefault();
+      const newIndex = Math.max(0, currentSegmentIndex - 1);
+      stopCurrentAudio();
+      playNextSegment(newIndex);
+    },
+    { enabled: isOpen && playableSegments.length > 0 },
+  );
+
+  useHotkey(
+    "ArrowDown",
+    (event) => {
+      const tag = (event.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      event.preventDefault();
+      const newIndex =
+        currentSegmentIndex === 0 && !isPlaying
+          ? 0
+          : Math.min(playableSegments.length - 1, currentSegmentIndex + 1);
+      stopCurrentAudio();
+      playNextSegment(newIndex);
+    },
+    { enabled: isOpen && playableSegments.length > 0 },
+  );
+
+  useHotkey(
+    "Escape",
+    (event) => {
+      event.preventDefault();
+      onClose();
+    },
+    { enabled: isOpen },
+  );
 
   const handleExport = async () => {
     await onExport(exportFormat);

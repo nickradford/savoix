@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryState, parseAsInteger, parseAsString } from "nuqs";
+import { useHotkey } from "@tanstack/react-hotkeys";
 import { Button } from "@/components/ui/button";
 import {
   Download,
@@ -21,6 +22,13 @@ import { FontControls } from "@/components/FontControls";
 import { RecordingControls } from "@/components/RecordingControls";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Kbd } from "@/components/ui/kbd";
 
 import { ScriptEditorArea } from "@/components/ScriptEditorArea";
 import { SegmentItem } from "@/components/SegmentList";
@@ -705,99 +713,166 @@ export default function ProjectWorkspace() {
     }
   };
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (isEditingScript) return;
-      if (isExportModalOpen) return;
+  // Helper to check if target is an input element
+  const isInputElement = useCallback((event: KeyboardEvent) => {
+    const tag = (event.target as HTMLElement).tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  }, []);
 
-      // Handle shortcuts panel toggle (shift is allowed since ? requires shift)
-      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        setShowShortcuts((prev) => !prev);
-        return;
+  // Detect platform for shortcut display
+  const isMac =
+    typeof navigator !== "undefined" &&
+    (/Mac|iPod|iPhone|iPad/.test(navigator.platform) ||
+      (navigator.userAgent.includes("Mac") &&
+        !navigator.userAgent.includes("Windows")));
+
+  // Toggle shortcuts panel (?)
+  useHotkey(
+    { key: "Slash", shift: true },
+    (event) => {
+      if (isInputElement(event)) return;
+      event.preventDefault();
+      setShowShortcuts((prev) => !prev);
+    },
+    { enabled: !isEditingScript && !isExportModalOpen },
+  );
+
+  // Close shortcuts panel with Escape
+  useHotkey(
+    "Escape",
+    (event) => {
+      event.preventDefault();
+      setShowShortcuts(false);
+    },
+    { enabled: showShortcuts },
+  );
+
+  // Previous segment (ArrowLeft)
+  useHotkey(
+    "ArrowLeft",
+    (event) => {
+      if (isInputElement(event)) return;
+      event.preventDefault();
+      stopPlayback();
+      setCurrentSegmentIndex((i) => Math.max(0, i - 1));
+    },
+    { enabled: !isEditingScript && !isExportModalOpen },
+  );
+
+  // Next segment (ArrowRight)
+  useHotkey(
+    "ArrowRight",
+    (event) => {
+      if (isInputElement(event)) return;
+      event.preventDefault();
+      stopPlayback();
+      setCurrentSegmentIndex((i) => Math.min(segments.length - 1, i + 1));
+    },
+    { enabled: !isEditingScript && !isExportModalOpen },
+  );
+
+  // Previous take (ArrowUp)
+  useHotkey(
+    "ArrowUp",
+    (event) => {
+      if (isInputElement(event)) return;
+      event.preventDefault();
+      setFocusedTakeIndex((i) =>
+        findNextNavigableTakeIndex(segments[currentSegmentIndex]?.takes, i, -1),
+      );
+    },
+    { enabled: !isEditingScript && !isExportModalOpen },
+  );
+
+  // Next take (ArrowDown)
+  useHotkey(
+    "ArrowDown",
+    (event) => {
+      if (isInputElement(event)) return;
+      event.preventDefault();
+      setFocusedTakeIndex((i) =>
+        findNextNavigableTakeIndex(segments[currentSegmentIndex]?.takes, i, 1),
+      );
+    },
+    { enabled: !isEditingScript && !isExportModalOpen },
+  );
+
+  // Record/Stop (Space)
+  useHotkey(
+    "Space",
+    (event) => {
+      if (isInputElement(event)) return;
+      event.preventDefault();
+      if (isRecording) {
+        stopRecording();
+      } else if (!isTranscribing) {
+        startRecording();
       }
+    },
+    { enabled: !isEditingScript && !isExportModalOpen },
+  );
 
-      // Close shortcuts panel with Escape
-      if (e.key === "Escape" && showShortcuts) {
-        e.preventDefault();
-        setShowShortcuts(false);
-        return;
+  // Play/Pause take (P)
+  useHotkey(
+    "P",
+    (event) => {
+      if (isInputElement(event)) return;
+      event.preventDefault();
+      if (playingTakeId) {
+        stopPlayback();
+      } else {
+        const takes = segments[currentSegmentIndex]?.takes;
+        const focusedTake =
+          takes && focusedTakeIndex >= 0 && focusedTakeIndex < takes.length
+            ? takes[focusedTakeIndex]
+            : undefined;
+        if (focusedTake && !focusedTake.deletedAt) {
+          playTake(focusedTake);
+        }
       }
+    },
+    { enabled: !isEditingScript && !isExportModalOpen },
+  );
 
-      switch (e.key) {
-        case "ArrowLeft":
-          e.preventDefault();
-          stopPlayback();
-          setCurrentSegmentIndex((i) => Math.max(0, i - 1));
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          stopPlayback();
-          setCurrentSegmentIndex((i) => Math.min(segments.length - 1, i + 1));
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          setFocusedTakeIndex((i) =>
-            findNextNavigableTakeIndex(
-              segments[currentSegmentIndex]?.takes,
-              i,
-              -1,
-            ),
-          );
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          setFocusedTakeIndex((i) =>
-            findNextNavigableTakeIndex(
-              segments[currentSegmentIndex]?.takes,
-              i,
-              1,
-            ),
-          );
-          break;
-        case " ":
-          e.preventDefault();
-          if (isRecording) {
-            stopRecording();
-          } else if (!isTranscribing) {
-            startRecording();
-          }
-          break;
-        case "p":
-        case "P":
-          e.preventDefault();
-          if (playingTakeId) {
-            stopPlayback();
-          } else {
-            const takes = segments[currentSegmentIndex]?.takes;
-            const focusedTake =
-              takes && focusedTakeIndex >= 0 && focusedTakeIndex < takes.length
-                ? takes[focusedTakeIndex]
-                : undefined;
-            if (focusedTake && !focusedTake.deletedAt) {
-              playTake(focusedTake);
-            }
-          }
-          break;
+  // Export project (Mod+P)
+  useHotkey(
+    "Mod+P",
+    (event) => {
+      if (isInputElement(event)) return;
+      event.preventDefault();
+      setIsExportModalOpen(true);
+    },
+    { enabled: !isEditingScript && !isExportModalOpen },
+  );
+
+  // Edit script (E)
+  useHotkey(
+    "E",
+    (event) => {
+      if (isInputElement(event)) return;
+      event.preventDefault();
+      setIsEditingScript(true);
+    },
+    { enabled: !isEditingScript && !isExportModalOpen },
+  );
+
+  // Toggle favorite/select take (F)
+  useHotkey(
+    "F",
+    (event) => {
+      if (isInputElement(event)) return;
+      event.preventDefault();
+      const takes = segments[currentSegmentIndex]?.takes;
+      const focusedTake =
+        takes && focusedTakeIndex >= 0 && focusedTakeIndex < takes.length
+          ? takes[focusedTakeIndex]
+          : undefined;
+      if (focusedTake && !focusedTake.deletedAt) {
+        selectTake(focusedTake.id, !focusedTake.isSelected);
       }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    segments,
-    currentSegmentIndex,
-    isRecording,
-    isTranscribing,
-    isEditingScript,
-    focusedTakeIndex,
-    playingTakeId,
-    stopPlayback,
-    showShortcuts,
-    isExportModalOpen,
-  ]);
+    },
+    { enabled: !isEditingScript && !isExportModalOpen },
+  );
 
   const segmentCount = editedScript
     .split("\n")
@@ -855,28 +930,50 @@ export default function ProjectWorkspace() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {!isEditingScript && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsEditingScript(true)}
-                className="gap-1.5 text-muted-foreground hover:text-foreground"
-              >
-                <Edit3 className="size-3.5" />
-                Edit Script
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsExportModalOpen(true)}
-              className="gap-1.5 text-muted-foreground hover:text-foreground"
-            >
-              <Download className="size-3.5" />
-              Export
-            </Button>
-          </div>
+          <TooltipProvider delayDuration={300}>
+            <div className="flex items-center gap-2">
+              {!isEditingScript && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsEditingScript(true)}
+                      className="gap-1.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <Edit3 className="size-3.5" />
+                      Edit Script
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <div className="flex items-center gap-1.5">
+                      Edit Script
+                      <Kbd variant="tooltip">E</Kbd>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsExportModalOpen(true)}
+                    className="gap-1.5 text-muted-foreground hover:text-foreground"
+                  >
+                    <Download className="size-3.5" />
+                    Export
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <div className="flex items-center gap-1.5">
+                    Export Project
+                    <Kbd variant="tooltip">{isMac ? "Cmd+P" : "Ctrl+P"}</Kbd>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
         </div>
       </header>
 
@@ -1063,6 +1160,27 @@ export default function ProjectWorkspace() {
                   </span>
                   <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
                     P
+                  </kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Toggle favorite take
+                  </span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    F
+                  </kbd>
+                </div>
+                <div className="h-px bg-border/50 my-3" />
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Edit script</span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    E
+                  </kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Export project</span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    {isMac ? "Cmd+P" : "Ctrl+P"}
                   </kbd>
                 </div>
                 <div className="h-px bg-border/50 my-3" />

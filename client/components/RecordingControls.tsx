@@ -6,6 +6,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 
 interface RecordingControlsProps {
@@ -80,9 +81,7 @@ export function RecordingControls({
             <TooltipContent>
               <div className="flex items-center gap-1.5">
                 Previous segment
-                <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-xs font-mono">
-                  ←
-                </kbd>
+                <Kbd variant="tooltip">←</Kbd>
               </div>
             </TooltipContent>
           </Tooltip>
@@ -122,9 +121,7 @@ export function RecordingControls({
                 <TooltipContent>
                   <div className="flex items-center gap-1.5">
                     Start recording
-                    <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-xs font-mono">
-                      Space
-                    </kbd>
+                    <Kbd variant="tooltip">Space</Kbd>
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -144,9 +141,7 @@ export function RecordingControls({
                 <TooltipContent>
                   <div className="flex items-center gap-1.5">
                     Stop recording
-                    <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-xs font-mono">
-                      Space
-                    </kbd>
+                    <Kbd variant="tooltip">Space</Kbd>
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -170,9 +165,7 @@ export function RecordingControls({
             <TooltipContent>
               <div className="flex items-center gap-1.5">
                 Next segment
-                <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-xs font-mono">
-                  →
-                </kbd>
+                <Kbd variant="tooltip">→</Kbd>
               </div>
             </TooltipContent>
           </Tooltip>
