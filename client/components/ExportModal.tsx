@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import { Waveform } from "@/components/ui/waveform";
 
@@ -29,6 +30,7 @@ interface ExportTake {
   duration: number;
   isSelected?: boolean;
   deletedAt?: string | null;
+  confidence?: number;
 }
 
 interface ExportSegment {
@@ -247,34 +249,12 @@ export function ExportModal({
   }, [isPlaying, currentSegmentIndex]);
 
   // Keyboard shortcuts for export modal
-  useHotkey(
-    "Space",
-    (event) => {
-      const tag = (event.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      event.preventDefault();
-      togglePlayback();
-    },
-    { enabled: isOpen },
-  );
-
-  useHotkey(
-    "P",
-    (event) => {
-      const tag = (event.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      event.preventDefault();
-      togglePlayback();
-    },
-    { enabled: isOpen },
-  );
+  useHotkey("Space", togglePlayback, { enabled: isOpen });
+  useHotkey("P", togglePlayback, { enabled: isOpen });
 
   useHotkey(
     "ArrowUp",
-    (event) => {
-      const tag = (event.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      event.preventDefault();
+    () => {
       const newIndex = Math.max(0, currentSegmentIndex - 1);
       stopCurrentAudio();
       playNextSegment(newIndex);
@@ -284,10 +264,7 @@ export function ExportModal({
 
   useHotkey(
     "ArrowDown",
-    (event) => {
-      const tag = (event.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      event.preventDefault();
+    () => {
       const newIndex =
         currentSegmentIndex === 0 && !isPlaying
           ? 0
@@ -298,17 +275,41 @@ export function ExportModal({
     { enabled: isOpen && playableSegments.length > 0 },
   );
 
+  useHotkey("Escape", onClose, { enabled: isOpen });
+
+  // Cycle through export formats (F)
   useHotkey(
-    "Escape",
-    (event) => {
-      event.preventDefault();
-      onClose();
+    "F",
+    () => {
+      const formats: Array<"wav" | "mp3" | "ogg" | "flac"> = [
+        "wav",
+        "mp3",
+        "ogg",
+        "flac",
+      ];
+      const currentIndex = formats.indexOf(exportFormat);
+      const nextIndex = (currentIndex + 1) % formats.length;
+      setExportFormat(formats[nextIndex]);
+    },
+    { enabled: isOpen },
+  );
+
+  // Export with Mod+Enter
+  useHotkey(
+    "Mod+Enter",
+    () => {
+      if (!isExporting && playableSegments.length > 0) {
+        handleExport();
+      }
     },
     { enabled: isOpen },
   );
 
   const handleExport = async () => {
-    await onExport(exportFormat);
+    const success = await onExport(exportFormat);
+    if (success) {
+      onClose();
+    }
   };
 
   const getSegmentStatus = (
@@ -402,9 +403,12 @@ export function ExportModal({
 
           {/* Segment List */}
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-muted-foreground">
-              Segments ({exportSegments.length})
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-muted-foreground">
+                Segments ({exportSegments.length})
+              </h3>
+              <Kbd className="text-[10px] px-1 py-0 h-4">↑↓</Kbd>
+            </div>
             <div className="space-y-1 max-h-64 overflow-y-auto border rounded-lg p-2">
               {exportSegments.map((exportSeg, index) => {
                 const status = getSegmentStatus(exportSeg, index);
@@ -456,6 +460,17 @@ export function ExportModal({
                               exportSeg.selectedTake.audioDuration ||
                                 exportSeg.selectedTake.duration / 1000,
                             )}
+                            {exportSeg.selectedTake.confidence !==
+                              undefined && (
+                              <>
+                                {" "}
+                                •{" "}
+                                {Math.round(
+                                  exportSeg.selectedTake.confidence * 100,
+                                )}
+                                % confidence
+                              </>
+                            )}
                           </>
                         ) : (
                           <span className="text-destructive">
@@ -478,9 +493,14 @@ export function ExportModal({
 
           {/* Export Format Selection */}
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-muted-foreground">
-              Export Format
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-muted-foreground">
+                Export Format
+              </h3>
+              <span className="text-xs text-muted-foreground">
+                <Kbd className="text-[10px] px-1.5 py-0 h-4">F</Kbd> to cycle
+              </span>
+            </div>
             <div className="flex gap-2">
               {(["wav", "mp3", "ogg", "flac"] as const).map((format) => (
                 <Button
@@ -516,30 +536,42 @@ export function ExportModal({
               <span>All segments ready</span>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-end gap-2">
             <Button variant="outline" onClick={onClose} disabled={isExporting}>
               Cancel
             </Button>
-            <Button
-              onClick={handleExport}
-              disabled={isExporting || playableSegments.length === 0}
-              className="gap-1.5"
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Exporting...
-                </>
-              ) : (
-                <>
-                  <Download className="size-4" />
-                  Export{" "}
-                  {playableSegments.length > 0
-                    ? `${playableSegments.length} segment${playableSegments.length > 1 ? "s" : ""}`
-                    : ""}
-                </>
+            <div className="flex flex-col items-end gap-1">
+              {playableSegments.length > 0 && (
+                <Kbd className="text-[10px] px-1.5 py-0 h-4">
+                  {typeof navigator !== "undefined" &&
+                  (/Mac|iPod|iPhone|iPad/.test(navigator.platform) ||
+                    (navigator.userAgent.includes("Mac") &&
+                      !navigator.userAgent.includes("Windows")))
+                    ? "Cmd+Enter"
+                    : "Ctrl+Enter"}
+                </Kbd>
               )}
-            </Button>
+              <Button
+                onClick={handleExport}
+                disabled={isExporting || playableSegments.length === 0}
+                className="gap-1.5"
+              >
+                {isExporting ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="size-4" />
+                    Export{" "}
+                    {playableSegments.length > 0
+                      ? `${playableSegments.length} segment${playableSegments.length > 1 ? "s" : ""}`
+                      : ""}
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>

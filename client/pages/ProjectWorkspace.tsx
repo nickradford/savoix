@@ -874,6 +874,30 @@ export default function ProjectWorkspace() {
     { enabled: !isEditingScript && !isExportModalOpen },
   );
 
+  // Edit script: Save (Mod+Enter)
+  useHotkey(
+    { key: "Enter", mod: true },
+    (event) => {
+      event.preventDefault();
+      if (isEditingScript && !isSavingScript) {
+        handleSaveScript();
+      }
+    },
+    { enabled: isEditingScript },
+  );
+
+  // Edit script: Cancel (Escape)
+  useHotkey(
+    "Escape",
+    (event) => {
+      event.preventDefault();
+      if (isEditingScript) {
+        setIsEditingScript(false);
+      }
+    },
+    { enabled: isEditingScript },
+  );
+
   const segmentCount = editedScript
     .split("\n")
     .filter((line) => line.trim().length > 0).length;
@@ -1181,6 +1205,38 @@ export default function ProjectWorkspace() {
                   <span className="text-muted-foreground">Export project</span>
                   <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
                     {isMac ? "Cmd+P" : "Ctrl+P"}
+                  </kbd>
+                </div>
+                <div className="h-px bg-border/50 my-3" />
+                <p className="text-xs font-medium text-foreground/70 mb-2">
+                  When editing script
+                </p>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Save changes</span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    {isMac ? "Cmd+Enter" : "Ctrl+Enter"}
+                  </kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Cancel</span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    Esc
+                  </kbd>
+                </div>
+                <div className="h-px bg-border/50 my-3" />
+                <p className="text-xs font-medium text-foreground/70 mb-2">
+                  In export modal
+                </p>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Cycle format</span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    F
+                  </kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Export</span>
+                  <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">
+                    {isMac ? "Cmd+Enter" : "Ctrl+Enter"}
                   </kbd>
                 </div>
                 <div className="h-px bg-border/50 my-3" />

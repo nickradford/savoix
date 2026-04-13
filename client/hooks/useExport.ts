@@ -121,8 +121,8 @@ export function useExport() {
       URL.revokeObjectURL(url);
 
       toast({
-        title: "Export Complete",
-        description: `Successfully exported audio files in ${format.toUpperCase()} format`,
+        title: "Project exported",
+        description: "Check your downloads folder",
       });
 
       setIsExporting(false);
