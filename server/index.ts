@@ -23,7 +23,12 @@ import {
   updateScriptSegments,
 } from "./routes/script-segments";
 import { getSegments, saveSegment, deleteSegment } from "./routes/segments";
-import { downloadProjectJSON, downloadProjectCSV } from "./routes/export";
+import {
+  downloadProjectJSON,
+  downloadProjectCSV,
+  exportProjectAudio,
+  generateExport,
+} from "./routes/export";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -300,6 +305,8 @@ export function createServer() {
   // Export API
   app.post("/api/export/json", downloadProjectJSON);
   app.post("/api/export/csv", downloadProjectCSV);
+  app.post("/api/export/audio/:projectId", exportProjectAudio);
+  app.get("/api/export/info/:projectId", generateExport);
 
   return app;
 }

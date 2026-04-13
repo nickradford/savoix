@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { Segment } from "@/components/SegmentTimeline";
+import type { Segment } from "@/components/SegmentTimeline";
+import { useToast } from "@/hooks/use-toast";
 
 export function useExport() {
   const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const downloadJSON = async (
     projectName: string,
     segments: Segment[],
-    script: string
+    script: string,
   ) => {
     setIsExporting(true);
     setError(null);
@@ -43,8 +45,7 @@ export function useExport() {
       setIsExporting(false);
       return true;
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Export failed";
+      const errorMessage = err instanceof Error ? err.message : "Export failed";
       setError(errorMessage);
       setIsExporting(false);
       return false;
@@ -82,13 +83,89 @@ export function useExport() {
       setIsExporting(false);
       return true;
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Export failed";
+      const errorMessage = err instanceof Error ? err.message : "Export failed";
       setError(errorMessage);
       setIsExporting(false);
       return false;
     }
   };
 
-  return { downloadJSON, downloadCSV, isExporting, error };
+  const exportAudio = async (
+    projectId: string,
+    projectName: string,
+    format: "wav" | "mp3" | "ogg" | "flac" = "wav",
+  ) => {
+    setIsExporting(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/export/audio/${projectId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ format }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to export audio");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${kebabify(projectName)}-audio-${format}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Complete",
+        description: `Successfully exported audio files in ${format.toUpperCase()} format`,
+      });
+
+      setIsExporting(false);
+      return true;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Export failed";
+      setError(errorMessage);
+      toast({
+        title: "Export Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      setIsExporting(false);
+      return false;
+    }
+  };
+
+  const getExportInfo = async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/export/info/${projectId}`);
+      if (!response.ok) {
+        throw new Error("Failed to get export info");
+      }
+      return await response.json();
+    } catch (err) {
+      console.error("Error getting export info:", err);
+      return { segments: 0, takes: 0, missingSegments: [] };
+    }
+  };
+
+  return {
+    downloadJSON,
+    downloadCSV,
+    exportAudio,
+    getExportInfo,
+    isExporting,
+    error,
+  };
+}
+
+function kebabify(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }

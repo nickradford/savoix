@@ -21,19 +21,14 @@ import { FontControls } from "@/components/FontControls";
 import { RecordingControls } from "@/components/RecordingControls";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 
 import { ScriptEditorArea } from "@/components/ScriptEditorArea";
 import { SegmentItem } from "@/components/SegmentList";
 import { TakeCard } from "@/components/ui/TakeCard";
 import { useTakeManager, type SegmentTake } from "@/hooks/useTakeManager";
 import { useFontSettings } from "@/hooks/useFontSettings";
+import { useExport } from "@/hooks/useExport";
+import { ExportModal } from "@/components/ExportModal";
 
 const SAMPLE_RATE = 16000;
 
@@ -388,6 +383,9 @@ export default function ProjectWorkspace() {
   // Keyboard shortcuts help panel
   const [showShortcuts, setShowShortcuts] = useState(false);
 
+  // Export modal
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
   const [playingTakeId, setPlayingTakeId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -407,6 +405,8 @@ export default function ProjectWorkspace() {
     formatTime: formatTakeTime,
     getTakeDurationMs,
   } = useTakeManager(segments, setSegments);
+
+  const { exportAudio, isExporting: isExportingAudio } = useExport();
 
   useEffect(() => {
     if (!id) return;
@@ -710,6 +710,7 @@ export default function ProjectWorkspace() {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (isEditingScript) return;
+      if (isExportModalOpen) return;
 
       // Handle shortcuts panel toggle (shift is allowed since ? requires shift)
       if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -795,6 +796,7 @@ export default function ProjectWorkspace() {
     playingTakeId,
     stopPlayback,
     showShortcuts,
+    isExportModalOpen,
   ]);
 
   const segmentCount = editedScript
@@ -865,28 +867,15 @@ export default function ProjectWorkspace() {
                 Edit Script
               </Button>
             )}
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="gap-1.5 text-muted-foreground hover:text-foreground"
-                >
-                  <Download className="size-3.5" />
-                  Export
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Export Project</DialogTitle>
-                </DialogHeader>
-                <div className="py-4">
-                  <p className="text-sm text-muted-foreground">
-                    Export functionality coming soon.
-                  </p>
-                </div>
-              </DialogContent>
-            </Dialog>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsExportModalOpen(true)}
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+            >
+              <Download className="size-3.5" />
+              Export
+            </Button>
           </div>
         </div>
       </header>
@@ -1173,6 +1162,17 @@ export default function ProjectWorkspace() {
           </div>
         )}
       </div>
+
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        projectName={project?.name || "project"}
+        segments={segments}
+        onExport={(format) =>
+          exportAudio(project?.id || "", project?.name || "", format)
+        }
+        isExporting={isExportingAudio}
+      />
     </div>
   );
 }
