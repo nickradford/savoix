@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import FormData from "form-data";
+import { calculateDiffConfidence } from "../../shared/confidence";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,11 +20,10 @@ if (!fs.existsSync(RECORDINGS_DIR)) {
 
 /**
  * Transcribes audio using Parakeet server
- * Returns transcription text and confidence
+ * Returns transcription text and word timing data
  */
 interface TranscriptionResult {
   text?: string;
-  confidence?: number;
   words?: string;
   segments?: string;
   audioDuration?: number;
@@ -92,7 +92,6 @@ async function transcribeAudio(
       const data = await response.json();
       return {
         text: data.text || "",
-        confidence: 0.85,
         words: data.words ? JSON.stringify(data.words) : undefined,
         segments: data.segments ? JSON.stringify(data.segments) : undefined,
         audioDuration: data.duration ?? undefined,
@@ -168,6 +167,12 @@ export const recordSegmentTake: RequestHandler = async (req, res) => {
     );
     const takeNumber = await getNextTakeNumber(segmentId);
 
+    // Calculate diff confidence using heuristic comparing expected script to transcription
+    const diffConfidence = calculateDiffConfidence(
+      segment.text,
+      transcriptionResult.text,
+    );
+
     // Create take record (always saved regardless of transcription success)
     const takeId = randomUUID();
     await db.insert(segmentTakes).values({
@@ -177,7 +182,7 @@ export const recordSegmentTake: RequestHandler = async (req, res) => {
       recordingId,
       recordingPath: audioFilePath,
       transcription: transcriptionResult.text,
-      confidence: transcriptionResult.confidence,
+      confidence: diffConfidence,
       words: transcriptionResult.words,
       segments: transcriptionResult.segments,
       audioDuration: transcriptionResult.audioDuration,

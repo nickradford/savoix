@@ -392,21 +392,18 @@ type TranscriptViewerConfidenceProps = Omit<
   ComponentPropsWithoutRef<"span">,
   "children"
 > & {
-  fallbackConfidence?: number;
+  confidence?: number;
 };
 
 /**
- * Displays the confidence score calculated from the diff between
- * expected script and actual transcription.
+ * Displays the confidence score from the database.
+ * The confidence is calculated server-side by comparing expected script with transcription.
  */
 function TranscriptViewerConfidence({
   className,
-  fallbackConfidence,
+  confidence,
   ...props
 }: TranscriptViewerConfidenceProps) {
-  const { diffConfidence } = useTranscriptViewerContext();
-  const confidence = diffConfidence ?? fallbackConfidence;
-
   if (confidence === undefined) return null;
 
   return (

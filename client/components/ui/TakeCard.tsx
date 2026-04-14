@@ -229,7 +229,7 @@ export function TakeCard({
               className="hidden"
               data-take-audio-id={take.id}
             />
-            <TranscriptViewerConfidence fallbackConfidence={take.confidence} />
+            <TranscriptViewerConfidence confidence={take.confidence} />
           </TranscriptViewerContainer>
         </div>
       )}

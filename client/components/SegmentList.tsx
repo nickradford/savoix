@@ -37,26 +37,30 @@ interface SegmentItemProps {
   index: number;
   isActive: boolean;
   onClick: () => void;
+  className?: string;
 }
 
-export function SegmentItem({
-  segment,
-  index,
-  isActive,
-  onClick,
-}: SegmentItemProps) {
+export const SegmentItem = React.forwardRef<
+  HTMLButtonElement,
+  SegmentItemProps
+>(function SegmentItem(
+  { segment, index, isActive, onClick, className }: SegmentItemProps,
+  ref,
+) {
   const activeTakes = segment.takes.filter((t: any) => !t.deletedAt);
   const activeTakeCount = activeTakes.length;
   const hasSelectedTake = activeTakes.some((t: any) => t.isSelected);
 
   return (
     <button
+      ref={ref}
       onClick={onClick}
       className={cn(
         "w-full text-left px-3 py-2.5 rounded-md text-sm transition-colors",
         isActive
           ? "bg-secondary text-foreground"
           : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
+        className,
       )}
     >
       <div className="flex items-start gap-2.5">
@@ -78,4 +82,4 @@ export function SegmentItem({
       )}
     </button>
   );
-}
+});

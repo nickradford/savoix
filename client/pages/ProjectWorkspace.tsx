@@ -37,6 +37,7 @@ import { useTakeManager, type SegmentTake } from "@/hooks/useTakeManager";
 import { useFontSettings } from "@/hooks/useFontSettings";
 import { useExport } from "@/hooks/useExport";
 import { ExportModal } from "@/components/ExportModal";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const SAMPLE_RATE = 16000;
 
@@ -399,6 +400,9 @@ export default function ProjectWorkspace() {
 
   const [focusedTakeIndex, setFocusedTakeIndex] = useState<number>(-1);
 
+  // Refs for segment scrolling
+  const segmentRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+
   const audioCtxRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -470,6 +474,17 @@ export default function ProjectWorkspace() {
 
   useEffect(() => {
     setFocusedTakeIndex(-1);
+  }, [currentSegmentIndex]);
+
+  // Scroll active segment into view when navigating
+  useEffect(() => {
+    const activeElement = segmentRefs.current.get(currentSegmentIndex);
+    if (activeElement) {
+      activeElement.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    }
   }, [currentSegmentIndex]);
 
   // Validate segment index when segments load or change
@@ -956,6 +971,7 @@ export default function ProjectWorkspace() {
 
           <TooltipProvider delayDuration={300}>
             <div className="flex items-center gap-2">
+              <ThemeToggle />
               {!isEditingScript && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1013,10 +1029,16 @@ export default function ProjectWorkspace() {
             {segments.map((segment, index) => (
               <SegmentItem
                 key={segment.id}
+                ref={(el) => {
+                  if (el) {
+                    segmentRefs.current.set(index, el);
+                  }
+                }}
                 segment={segment}
                 index={index}
                 isActive={index === currentSegmentIndex}
                 onClick={() => setCurrentSegmentIndex(index)}
+                className="scroll-mt-16 scroll-mb-8"
               />
             ))}
           </div>

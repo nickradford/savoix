@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useProjectsList } from "@/hooks/useProjectsList";
 import { ProjectForm } from "@/components/ui/ProjectForm";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function Index() {
   const navigate = useNavigate();
@@ -58,13 +59,16 @@ export default function Index() {
       {/* Header */}
       <header className="relative">
         <div className="relative max-w-6xl mx-auto px-8 py-8">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-rose-500 to-rose-600 shadow-lg shadow-rose-500/20">
-              <Mic className="size-5 text-white" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-rose-500 to-rose-600 shadow-lg shadow-rose-500/20">
+                <Mic className="size-5 text-white" />
+              </div>
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+                Savoix
+              </h1>
             </div>
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-              Savoix
-            </h1>
+            <ThemeToggle />
           </div>
         </div>
       </header>
