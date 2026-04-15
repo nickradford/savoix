@@ -6,7 +6,8 @@ import * as schema from "./schema";
 
 export type AppDatabase = ReturnType<typeof createDatabase>;
 
-export const getDefaultDbPath = () => path.join(process.cwd(), "data", "app.db");
+export const getDefaultDbPath = () =>
+  path.join(process.cwd(), "data", "app.db");
 
 type TableInfoRow = {
   name: string;
@@ -144,5 +145,3 @@ export function createDatabase(dbPath = getDefaultDbPath()) {
 
   return database;
 }
-
-export const db = createDatabase();

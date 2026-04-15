@@ -1,7 +1,5 @@
-ignoredBuiltDependencies:
-  - better-sqlite3
-
 onlyBuiltDependencies:
+  - better-sqlite3
   - cpu-features
   - protobufjs
   - ssh2

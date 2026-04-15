@@ -1,6 +1,8 @@
 import type { AppDatabase } from "../db";
-import { db } from "../db";
+import { createDatabase } from "../db";
 import { scriptSegments } from "../schema";
+
+const db = createDatabase();
 import { eq } from "drizzle-orm";
 import { randomUUID, createHash } from "crypto";
 
