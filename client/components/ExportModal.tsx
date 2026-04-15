@@ -48,6 +48,10 @@ interface ExportModalProps {
   segments: ExportSegment[];
   onExport: (format: "wav" | "mp3" | "ogg" | "flac") => Promise<void | boolean>;
   isExporting: boolean;
+  ffmpegStatus?: {
+    available: boolean;
+    supportedFormats: ("wav" | "mp3" | "ogg" | "flac")[];
+  } | null;
 }
 
 const SILENCE_DURATION_MS = 1000; // 1 second silence between takes
@@ -59,10 +63,19 @@ export function ExportModal({
   segments,
   onExport,
   isExporting,
+  ffmpegStatus,
 }: ExportModalProps) {
+  const supportedFormats = ffmpegStatus?.supportedFormats || ["wav"];
   const [exportFormat, setExportFormat] = useState<
     "wav" | "mp3" | "ogg" | "flac"
   >("wav");
+
+  // Reset to wav if current format is not supported when ffmpeg status changes
+  useEffect(() => {
+    if (!supportedFormats.includes(exportFormat)) {
+      setExportFormat("wav");
+    }
+  }, [supportedFormats, exportFormat]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [currentTakePlaybackTime, setCurrentTakePlaybackTime] = useState(0);
@@ -277,19 +290,13 @@ export function ExportModal({
 
   useHotkey("Escape", onClose, { enabled: isOpen });
 
-  // Cycle through export formats (F)
+  // Cycle through supported export formats (F)
   useHotkey(
     "F",
     () => {
-      const formats: Array<"wav" | "mp3" | "ogg" | "flac"> = [
-        "wav",
-        "mp3",
-        "ogg",
-        "flac",
-      ];
-      const currentIndex = formats.indexOf(exportFormat);
-      const nextIndex = (currentIndex + 1) % formats.length;
-      setExportFormat(formats[nextIndex]);
+      const currentIndex = supportedFormats.indexOf(exportFormat);
+      const nextIndex = (currentIndex + 1) % supportedFormats.length;
+      setExportFormat(supportedFormats[nextIndex]);
     },
     { enabled: isOpen },
   );
@@ -502,18 +509,33 @@ export function ExportModal({
               </span>
             </div>
             <div className="flex gap-2">
-              {(["wav", "mp3", "ogg", "flac"] as const).map((format) => (
-                <Button
-                  key={format}
-                  variant={exportFormat === format ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setExportFormat(format)}
-                  className="flex-1"
-                >
-                  {format.toUpperCase()}
-                </Button>
-              ))}
+              {(["wav", "mp3", "ogg", "flac"] as const).map((format) => {
+                const isSupported = supportedFormats.includes(format);
+                return (
+                  <Button
+                    key={format}
+                    variant={exportFormat === format ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => isSupported && setExportFormat(format)}
+                    disabled={!isSupported}
+                    className="flex-1"
+                    title={
+                      !isSupported
+                        ? "Requires ffmpeg to be installed"
+                        : undefined
+                    }
+                  >
+                    {format.toUpperCase()}
+                  </Button>
+                );
+              })}
             </div>
+            {!ffmpegStatus?.available && (
+              <p className="text-xs text-amber-600">
+                <AlertTriangle className="size-3 inline mr-1" />
+                ffmpeg not detected. Only WAV format is available.
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               Files will be exported as{" "}
               <code className="bg-secondary px-1 py-0.5 rounded">

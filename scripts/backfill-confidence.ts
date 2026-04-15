@@ -14,8 +14,10 @@
  *   pnpm tsx scripts/backfill-confidence.ts --dry-run
  */
 
-import { db } from "../server/db";
+import { createDatabase } from "../server/db";
 import { scriptSegments, segmentTakes } from "../server/schema";
+
+const db = createDatabase();
 import { eq, isNull, or, and, ne, sql } from "drizzle-orm";
 import { calculateDiffConfidence } from "../shared/confidence";
 

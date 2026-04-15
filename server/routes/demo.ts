@@ -1,9 +1,15 @@
-import { RequestHandler } from "express";
-import { DemoResponse } from "@shared/api";
+import type { RequestHandler } from "express";
+import { Effect, type ManagedRuntime as ManagedRuntimeType } from "effect";
+import { effectHandler, jsonResponse } from "../effect/http";
 
-export const handleDemo: RequestHandler = (req, res) => {
-  const response: DemoResponse = {
-    message: "Hello from Express server",
-  };
-  res.status(200).json(response);
-};
+export function makeDemoHandler(
+  runtime: ManagedRuntimeType.ManagedRuntime<any, any>,
+): RequestHandler {
+  return effectHandler(runtime, () =>
+    Effect.succeed(
+      jsonResponse({
+        message: "Hello from the demo endpoint",
+      }),
+    ),
+  );
+}

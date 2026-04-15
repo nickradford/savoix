@@ -11,6 +11,14 @@ export interface DemoResponse {
   message: string;
 }
 
+export interface ApiError {
+  error: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
 /**
  * Transcription request/response types
  */
