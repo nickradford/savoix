@@ -3,12 +3,17 @@ import path from "node:path";
 import JSZip from "jszip";
 import FormData from "form-data";
 import { Command, FileSystem } from "@effect/platform";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type { AppDatabase } from "../db";
 import { segmentTakes, projects, scriptSegments } from "../schema";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { Context, Effect } from "effect";
 import type { Segment } from "@shared/api";
-import { buildSegmentsForScript, syncSegmentsWithScriptForDb } from "../services/segmentSync";
+import {
+  buildSegmentsForScript,
+  syncSegmentsWithScriptForDb,
+} from "../services/segmentSync";
 import {
   DependencyUnavailableError,
   ExternalServiceError,
@@ -33,7 +38,10 @@ export interface TranscriptionResult {
   readonly audioDuration?: number;
 }
 
-export class AppConfig extends Context.Tag("AppConfig")<AppConfig, AppConfigShape>() {}
+export class AppConfig extends Context.Tag("AppConfig")<
+  AppConfig,
+  AppConfigShape
+>() {}
 
 export interface ProjectRepoShape {
   readonly listProjects: () => Effect.Effect<any[], PersistenceError, any>;
@@ -58,7 +66,10 @@ export interface ProjectRepoShape {
   ) => Effect.Effect<void, NotFoundError | PersistenceError, any>;
 }
 
-export class ProjectRepo extends Context.Tag("ProjectRepo")<ProjectRepo, ProjectRepoShape>() {}
+export class ProjectRepo extends Context.Tag("ProjectRepo")<
+  ProjectRepo,
+  ProjectRepoShape
+>() {}
 
 export interface SegmentRepoShape {
   readonly getSegment: (
@@ -76,7 +87,10 @@ export interface SegmentRepoShape {
   ) => Effect.Effect<any[], PersistenceError, any>;
 }
 
-export class SegmentRepo extends Context.Tag("SegmentRepo")<SegmentRepo, SegmentRepoShape>() {}
+export class SegmentRepo extends Context.Tag("SegmentRepo")<
+  SegmentRepo,
+  SegmentRepoShape
+>() {}
 
 export interface TakeRepoShape {
   readonly getTake: (
@@ -118,7 +132,10 @@ export interface TakeRepoShape {
   ) => Effect.Effect<any, NotFoundError | PersistenceError, any>;
 }
 
-export class TakeRepo extends Context.Tag("TakeRepo")<TakeRepo, TakeRepoShape>() {}
+export class TakeRepo extends Context.Tag("TakeRepo")<
+  TakeRepo,
+  TakeRepoShape
+>() {}
 
 export interface LegacySegmentStoreShape {
   readonly list: (projectId: string) => Effect.Effect<Segment[], never, any>;
@@ -290,14 +307,17 @@ export function makeProjectRepo(database: AppDatabase): ProjectRepoShape {
         if (segments.length > 0) {
           yield* Effect.tryPromise({
             try: () => database.insert(scriptSegments).values(segments),
-            catch: (error) => dbError("Failed to create script segments", error),
+            catch: (error) =>
+              dbError("Failed to create script segments", error),
           });
         }
 
         return yield* Effect.flatMap(getProjectRecord(projectId), (project) =>
           project
             ? Effect.succeed(project)
-            : Effect.fail(dbError("Created project could not be reloaded", projectId)),
+            : Effect.fail(
+                dbError("Created project could not be reloaded", projectId),
+              ),
         );
       }),
     getProject: (id) =>
@@ -337,7 +357,10 @@ export function makeProjectRepo(database: AppDatabase): ProjectRepoShape {
           catch: (error) => dbError("Failed to update project", error),
         });
 
-        if (input.script !== undefined && input.script !== existingProject.script) {
+        if (
+          input.script !== undefined &&
+          input.script !== existingProject.script
+        ) {
           yield* Effect.tryPromise({
             try: () => syncSegmentsWithScriptForDb(database, id, input.script!),
             catch: (error) => dbError("Failed to sync script segments", error),
@@ -383,7 +406,9 @@ export function makeSegmentRepo(database: AppDatabase): SegmentRepoShape {
           orderBy: (table, helpers) => [helpers.asc(table.index)],
           with: {
             takes: {
-              orderBy: (takesTable, helpers) => [helpers.desc(takesTable.createdAt)],
+              orderBy: (takesTable, helpers) => [
+                helpers.desc(takesTable.createdAt),
+              ],
             },
           },
         }),
@@ -459,10 +484,12 @@ export function makeTakeRepo(database: AppDatabase): TakeRepoShape {
 
   return {
     getTake: (takeId, options) =>
-      Effect.flatMap(loadTake(takeId, options?.includeDeleted ?? true), (take) =>
-        take
-          ? Effect.succeed(take)
-          : Effect.fail(new NotFoundError({ message: "Take not found" })),
+      Effect.flatMap(
+        loadTake(takeId, options?.includeDeleted ?? true),
+        (take) =>
+          take
+            ? Effect.succeed(take)
+            : Effect.fail(new NotFoundError({ message: "Take not found" })),
       ),
     getTakeById: (takeId) => loadTake(takeId, true),
     getNextTakeNumber: (segmentId) =>
@@ -496,7 +523,9 @@ export function makeTakeRepo(database: AppDatabase): TakeRepoShape {
         return yield* Effect.flatMap(loadTake(takeId, true), (take) =>
           take
             ? Effect.succeed(take)
-            : Effect.fail(dbError("Created take could not be reloaded", takeId)),
+            : Effect.fail(
+                dbError("Created take could not be reloaded", takeId),
+              ),
         );
       }),
     updateTake: (takeId, values) =>
@@ -510,14 +539,19 @@ export function makeTakeRepo(database: AppDatabase): TakeRepoShape {
 
         yield* Effect.tryPromise({
           try: () =>
-            database.update(segmentTakes).set(values).where(eq(segmentTakes.id, takeId)),
+            database
+              .update(segmentTakes)
+              .set(values)
+              .where(eq(segmentTakes.id, takeId)),
           catch: (error) => dbError("Failed to update take", error),
         });
 
         return yield* Effect.flatMap(loadTake(takeId, true), (updatedTake) =>
           updatedTake
             ? Effect.succeed(updatedTake)
-            : Effect.fail(dbError("Updated take could not be reloaded", takeId)),
+            : Effect.fail(
+                dbError("Updated take could not be reloaded", takeId),
+              ),
         );
       }),
     softDeleteTake: (takeId) =>
@@ -559,7 +593,9 @@ export function makeTakeRepo(database: AppDatabase): TakeRepoShape {
         return yield* Effect.flatMap(loadTake(takeId, true), (restoredTake) =>
           restoredTake
             ? Effect.succeed(restoredTake)
-            : Effect.fail(dbError("Restored take could not be reloaded", takeId)),
+            : Effect.fail(
+                dbError("Restored take could not be reloaded", takeId),
+              ),
         );
       }),
     selectTake: (takeId, isSelected) =>
@@ -584,8 +620,7 @@ export function makeTakeRepo(database: AppDatabase): TakeRepoShape {
                     sql`${segmentTakes.id} != ${takeId}`,
                   ),
                 ),
-            catch: (error) =>
-              dbError("Failed to update take selection", error),
+            catch: (error) => dbError("Failed to update take selection", error),
           });
         }
 
@@ -601,7 +636,9 @@ export function makeTakeRepo(database: AppDatabase): TakeRepoShape {
         return yield* Effect.flatMap(loadTake(takeId, true), (updatedTake) =>
           updatedTake
             ? Effect.succeed(updatedTake)
-            : Effect.fail(dbError("Selected take could not be reloaded", takeId)),
+            : Effect.fail(
+                dbError("Selected take could not be reloaded", takeId),
+              ),
         );
       }),
   };
@@ -615,32 +652,34 @@ export function makeLegacySegmentStore(): LegacySegmentStoreShape {
     save: (projectId, segment) =>
       Effect.try({
         try: () => {
-        if (
-          !segment.label ||
-          segment.startTime === undefined ||
-          segment.endTime === undefined
-        ) {
-          throw new ValidationError({
-            message: "label, startTime, and endTime are required",
-          });
-        }
+          if (
+            !segment.label ||
+            segment.startTime === undefined ||
+            segment.endTime === undefined
+          ) {
+            throw new ValidationError({
+              message: "label, startTime, and endTime are required",
+            });
+          }
 
-        const existingSegments = segmentsStorage.get(projectId) || [];
-        const nextSegment: Segment = {
-          ...segment,
-          projectId,
-          id: segment.id || Date.now().toString(),
-        };
-        const existingIndex = existingSegments.findIndex((item) => item.id === segment.id);
+          const existingSegments = segmentsStorage.get(projectId) || [];
+          const nextSegment: Segment = {
+            ...segment,
+            projectId,
+            id: segment.id || Date.now().toString(),
+          };
+          const existingIndex = existingSegments.findIndex(
+            (item) => item.id === segment.id,
+          );
 
-        if (existingIndex >= 0) {
-          existingSegments[existingIndex] = nextSegment;
-        } else {
-          existingSegments.push(nextSegment);
-        }
+          if (existingIndex >= 0) {
+            existingSegments[existingIndex] = nextSegment;
+          } else {
+            existingSegments.push(nextSegment);
+          }
 
-        segmentsStorage.set(projectId, existingSegments);
-        return existingSegments;
+          segmentsStorage.set(projectId, existingSegments);
+          return existingSegments;
         },
         catch: (error) =>
           error instanceof ValidationError
@@ -661,7 +700,9 @@ export function makeLegacySegmentStore(): LegacySegmentStoreShape {
   };
 }
 
-export function makeRecordingStore(config: AppConfigShape): RecordingStoreShape {
+export function makeRecordingStore(
+  config: AppConfigShape,
+): RecordingStoreShape {
   const resolvePath = (recordingId: string) =>
     path.join(config.recordingsDir, `${recordingId}.wav`);
 
@@ -669,7 +710,9 @@ export function makeRecordingStore(config: AppConfigShape): RecordingStoreShape 
     const fs = yield* FileSystem.FileSystem;
     yield* fs.makeDirectory(config.recordingsDir, { recursive: true });
   }).pipe(
-    Effect.mapError((error) => fileError("Failed to create recordings directory", error)),
+    Effect.mapError((error) =>
+      fileError("Failed to create recordings directory", error),
+    ),
   );
 
   const recordingStore: RecordingStoreShape = {
@@ -720,7 +763,9 @@ export function makeRecordingStore(config: AppConfigShape): RecordingStoreShape 
         const fs = yield* FileSystem.FileSystem;
         return yield* fs.exists(recordingPath);
       }).pipe(
-        Effect.mapError((error) => fileError("Failed to check recording path", error)),
+        Effect.mapError((error) =>
+          fileError("Failed to check recording path", error),
+        ),
       ),
     removeAtPath: (recordingPath) =>
       Effect.gen(function* () {
@@ -730,7 +775,9 @@ export function makeRecordingStore(config: AppConfigShape): RecordingStoreShape 
           yield* fs.remove(recordingPath);
         }
       }).pipe(
-        Effect.mapError((error) => fileError("Failed to remove recording", error)),
+        Effect.mapError((error) =>
+          fileError("Failed to remove recording", error),
+        ),
       ),
   };
 
@@ -801,6 +848,8 @@ export function makeTranscriptionClient(
   };
 }
 
+const execFileAsync = promisify(execFile);
+
 export function makeExportService(
   config: AppConfigShape,
   database: AppDatabase,
@@ -821,54 +870,61 @@ export function makeExportService(
   const checkFfmpeg =
     options?.checkFfmpegImpl ??
     (() =>
-      Command.exitCode(Command.make(config.ffmpegBinary, "-version")).pipe(
-        Effect.map((exitCode) => exitCode === 0),
-        Effect.catchAll(() => Effect.succeed(false)),
-      ));
+      Effect.tryPromise({
+        try: async () => {
+          try {
+            await execFileAsync(config.ffmpegBinary, ["-version"]);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        catch: () => false,
+      }).pipe(Effect.catchAll(() => Effect.succeed(false))));
 
   const convertAudio =
     options?.convertAudioImpl ??
     ((inputPath: string, outputPath: string, format: AudioExportFormat) => {
-    const args = ["-i", inputPath, "-y"];
+      const args = ["-i", inputPath, "-y"];
 
-    switch (format) {
-      case "mp3":
-        args.push("-codec:a", "libmp3lame", "-q:a", "2");
-        break;
-      case "ogg":
-        args.push("-codec:a", "libvorbis", "-q:a", "4");
-        break;
-      case "flac":
-        args.push("-codec:a", "flac");
-        break;
-      case "wav":
-      default:
-        args.push("-codec:a", "pcm_s16le");
-        break;
-    }
+      switch (format) {
+        case "mp3":
+          args.push("-codec:a", "libmp3lame", "-q:a", "2");
+          break;
+        case "ogg":
+          args.push("-codec:a", "libvorbis", "-q:a", "4");
+          break;
+        case "flac":
+          args.push("-codec:a", "flac");
+          break;
+        case "wav":
+        default:
+          args.push("-codec:a", "pcm_s16le");
+          break;
+      }
 
-    args.push(outputPath);
+      args.push(outputPath);
 
-    return Command.exitCode(Command.make(config.ffmpegBinary, ...args)).pipe(
-      Effect.flatMap((exitCode) =>
-        exitCode === 0
-          ? Effect.succeed(undefined)
-          : Effect.fail(
-              new ExternalServiceError({
-                message: "ffmpeg exited with a non-zero status",
-                details: { exitCode, inputPath, outputPath, format },
-              }),
-            ),
-      ),
-      Effect.catchAll((error) =>
-        Effect.fail(
-          new DependencyUnavailableError({
-            message: "ffmpeg is unavailable",
-            details: error,
-          }),
+      return Command.exitCode(Command.make(config.ffmpegBinary, ...args)).pipe(
+        Effect.flatMap((exitCode) =>
+          exitCode === 0
+            ? Effect.succeed(undefined)
+            : Effect.fail(
+                new ExternalServiceError({
+                  message: "ffmpeg exited with a non-zero status",
+                  details: { exitCode, inputPath, outputPath, format },
+                }),
+              ),
         ),
-      ),
-    );
+        Effect.catchAll((error) =>
+          Effect.fail(
+            new DependencyUnavailableError({
+              message: "ffmpeg is unavailable",
+              details: error,
+            }),
+          ),
+        ),
+      );
     });
 
   return {
@@ -946,7 +1002,9 @@ export function makeExportService(
                 continue;
               }
 
-              const inputExists = yield* recordingStore.existsAtPath(take.recordingPath);
+              const inputExists = yield* recordingStore.existsAtPath(
+                take.recordingPath,
+              );
               if (!inputExists) {
                 continue;
               }
@@ -961,7 +1019,8 @@ export function makeExportService(
                 );
                 tempFiles.push(tempOutputPath);
                 yield* convertAudio(take.recordingPath, tempOutputPath, format);
-                audioBuffer = yield* recordingStore.readRecordingAtPath(tempOutputPath);
+                audioBuffer =
+                  yield* recordingStore.readRecordingAtPath(tempOutputPath);
               } else {
                 audioBuffer = yield* recordingStore.readRecordingAtPath(
                   take.recordingPath,
@@ -973,15 +1032,16 @@ export function makeExportService(
 
             return yield* Effect.tryPromise({
               try: () => zip.generateAsync({ type: "nodebuffer" }),
-              catch: (error) => fileError("Failed to generate ZIP archive", error),
+              catch: (error) =>
+                fileError("Failed to generate ZIP archive", error),
             });
           }),
           Effect.forEach(
             tempFiles,
             (tempFile) =>
-              recordingStore.removeAtPath(tempFile).pipe(
-                Effect.catchAll(() => Effect.succeed(undefined)),
-              ),
+              recordingStore
+                .removeAtPath(tempFile)
+                .pipe(Effect.catchAll(() => Effect.succeed(undefined))),
             { discard: true },
           ),
         );
@@ -1013,7 +1073,8 @@ export function makeExportService(
 
           return {
             segments: segments.length,
-            takes: segments.filter((segment) => segment.takes.length > 0).length,
+            takes: segments.filter((segment) => segment.takes.length > 0)
+              .length,
             missingSegments,
           };
         },

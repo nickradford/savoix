@@ -65,7 +65,10 @@ export function createServer(
     transcriptionHandlers.recordSegmentTake,
   );
 
-  app.post("/api/takes/:takeId/transcribe", takeHandlers.retryTakeTranscription);
+  app.post(
+    "/api/takes/:takeId/transcribe",
+    takeHandlers.retryTakeTranscription,
+  );
   app.delete("/api/takes/:takeId", takeHandlers.deleteTake);
   app.post("/api/takes/:takeId/restore", takeHandlers.restoreTake);
   app.post("/api/takes/:takeId/select", takeHandlers.selectTake);
@@ -83,6 +86,7 @@ export function createServer(
   app.post("/api/export/csv", exportHandlers.downloadProjectCSV);
   app.post("/api/export/audio/:projectId", exportHandlers.exportProjectAudio);
   app.get("/api/export/info/:projectId", exportHandlers.generateExport);
+  app.get("/api/export/ffmpeg-status", exportHandlers.getFfmpegStatus);
 
   return app;
 }

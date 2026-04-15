@@ -1,6 +1,15 @@
 import type { RequestHandler } from "express";
-import { Effect, Schema, type ManagedRuntime as ManagedRuntimeType } from "effect";
-import { decodeSchema, effectHandler, jsonResponse, sendResponse } from "../effect/http";
+import {
+  Effect,
+  Schema,
+  type ManagedRuntime as ManagedRuntimeType,
+} from "effect";
+import {
+  decodeSchema,
+  effectHandler,
+  jsonResponse,
+  sendResponse,
+} from "../effect/http";
 import { ExportService, type AudioExportFormat } from "../effect/services";
 
 const ProjectIdParams = Schema.Struct({
@@ -8,9 +17,7 @@ const ProjectIdParams = Schema.Struct({
 });
 
 const ExportAudioBody = Schema.Struct({
-  format: Schema.UndefinedOr(
-    Schema.Literal("wav", "mp3", "ogg", "flac"),
-  ),
+  format: Schema.UndefinedOr(Schema.Literal("wav", "mp3", "ogg", "flac")),
 });
 
 const DownloadJsonBody = Schema.Struct({
@@ -39,6 +46,7 @@ export function makeExportHandlers(
   readonly downloadProjectCSV: RequestHandler;
   readonly exportProjectAudio: RequestHandler;
   readonly generateExport: RequestHandler;
+  readonly getFfmpegStatus: RequestHandler;
 } {
   return {
     downloadProjectJSON: effectHandler(runtime, (request) =>
@@ -117,8 +125,22 @@ export function makeExportHandlers(
       Effect.gen(function* () {
         const params = yield* decodeSchema(ProjectIdParams, request.params);
         const exportService = yield* ExportService;
-        const payload = yield* exportService.generateExportInfo(params.projectId);
+        const payload = yield* exportService.generateExportInfo(
+          params.projectId,
+        );
         return jsonResponse(payload);
+      }),
+    ),
+    getFfmpegStatus: effectHandler(runtime, () =>
+      Effect.gen(function* () {
+        const exportService = yield* ExportService;
+        const isAvailable = yield* exportService.checkFfmpeg();
+        return jsonResponse({
+          available: isAvailable,
+          supportedFormats: isAvailable
+            ? ["wav", "mp3", "ogg", "flac"]
+            : ["wav"],
+        });
       }),
     ),
   };
