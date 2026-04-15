@@ -1,3 +1,4 @@
+import type { AppDatabase } from "../db";
 import { db } from "../db";
 import { scriptSegments } from "../schema";
 import { eq } from "drizzle-orm";
@@ -21,6 +22,13 @@ export interface SegmentUpdate {
   contentHash: string;
 }
 
+function splitScript(script: string): string[] {
+  return script
+    .split("\n")
+    .map((line: string) => line.trim())
+    .filter((line: string) => line.length > 0);
+}
+
 /**
  * Synchronizes script segments with a new script while preserving segment IDs
  * based on content hashing. This ensures takes are not lost when:
@@ -33,20 +41,18 @@ export interface SegmentUpdate {
  * @param script - The new script content
  * @returns Array of updated segments with their takes
  */
-export async function syncSegmentsWithScript(
+export async function syncSegmentsWithScriptForDb(
+  database: AppDatabase,
   projectId: string,
   script: string,
 ): Promise<void> {
   // Get existing segments
-  const existingSegments = await db.query.scriptSegments.findMany({
+  const existingSegments = await database.query.scriptSegments.findMany({
     where: eq(scriptSegments.projectId, projectId),
   });
 
   // Parse new lines
-  const lines = script
-    .split("\n")
-    .map((line: string) => line.trim())
-    .filter((line: string) => line.length > 0);
+  const lines = splitScript(script);
 
   // Build a map of content hash to existing segment(s)
   // We use an array because the same content can appear multiple times
@@ -108,13 +114,15 @@ export async function syncSegmentsWithScript(
   // Delete segments that weren't matched (content was removed)
   for (const segment of existingSegments) {
     if (!matchedSegmentIds.has(segment.id)) {
-      await db.delete(scriptSegments).where(eq(scriptSegments.id, segment.id));
+      await database
+        .delete(scriptSegments)
+        .where(eq(scriptSegments.id, segment.id));
     }
   }
 
   // Update indices for matched segments
   for (const update of segmentsToUpdate) {
-    await db
+    await database
       .update(scriptSegments)
       .set({ index: update.index })
       .where(eq(scriptSegments.id, update.id));
@@ -122,6 +130,23 @@ export async function syncSegmentsWithScript(
 
   // Insert new segments
   if (segmentsToInsert.length > 0) {
-    await db.insert(scriptSegments).values(segmentsToInsert);
+    await database.insert(scriptSegments).values(segmentsToInsert);
   }
+}
+
+export async function syncSegmentsWithScript(
+  projectId: string,
+  script: string,
+): Promise<void> {
+  return syncSegmentsWithScriptForDb(db, projectId, script);
+}
+
+export function buildSegmentsForScript(projectId: string, script: string) {
+  return splitScript(script).map((line, index) => ({
+    id: randomUUID(),
+    projectId,
+    index,
+    text: line,
+    contentHash: hashContent(line),
+  }));
 }
