@@ -11,6 +11,20 @@ A script recording and transcription application designed for precise dialogue r
 - **Discrepancy Detection**: Highlights omissions, insertions, and contraction mismatches
 - **Stable Take Management**: Maintains consistent take numbering across segments, with soft-delete support
 
+## Screenshots
+
+### Project Workspace
+
+The main workspace for reviewing segments, recording takes, and validating transcriptions against the original script.
+
+![Savoix project workspace](public/savoix-project-workspace.png)
+
+### Export Modal
+
+The export flow for reviewing ready segments and choosing the output audio format before generating files.
+
+![Savoix export modal](public/savoix-export-modal.png)
+
 ## Technology Stack
 
 - **Frontend**: React 18, React Router, TypeScript, Vite
