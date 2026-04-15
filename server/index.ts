@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { Effect, type ManagedRuntime as ManagedRuntimeType } from "effect";
-import { appRuntime } from "./effect/runtime";
+import { createAppRuntime } from "./effect/runtime";
 import { AppConfig } from "./effect/services";
 import { effectHandler, jsonResponse } from "./effect/http";
 import { makeDemoHandler } from "./routes/demo";
@@ -13,7 +13,7 @@ import { makeTakeHandlers } from "./routes/takes";
 import { makeTranscriptionHandlers } from "./routes/transcription";
 
 export function createServer(
-  runtime: ManagedRuntimeType.ManagedRuntime<any, any> = appRuntime,
+  runtime: ManagedRuntimeType.ManagedRuntime<any, any> = createAppRuntime(),
 ) {
   const app = express();
 

@@ -96,5 +96,3 @@ export function buildAppLayer(overrides: RuntimeOverrides = {}) {
 export function createAppRuntime(overrides: RuntimeOverrides = {}) {
   return ManagedRuntime.make(buildAppLayer(overrides));
 }
-
-export const appRuntime = createAppRuntime();
