@@ -418,7 +418,12 @@ export default function ProjectWorkspace() {
     getTakeDurationMs,
   } = useTakeManager(segments, setSegments);
 
-  const { exportAudio, isExporting: isExportingAudio } = useExport();
+  const {
+    exportAudio,
+    isExporting: isExportingAudio,
+    checkFfmpegStatus,
+    ffmpegStatus,
+  } = useExport();
 
   useEffect(() => {
     if (!id) return;
@@ -486,6 +491,13 @@ export default function ProjectWorkspace() {
       });
     }
   }, [currentSegmentIndex]);
+
+  // Check ffmpeg status when export modal opens
+  useEffect(() => {
+    if (isExportModalOpen) {
+      checkFfmpegStatus();
+    }
+  }, [isExportModalOpen, checkFfmpegStatus]);
 
   // Validate segment index when segments load or change
   useEffect(() => {
@@ -1368,6 +1380,7 @@ export default function ProjectWorkspace() {
           exportAudio(project?.id || "", project?.name || "", format)
         }
         isExporting={isExportingAudio}
+        ffmpegStatus={ffmpegStatus}
       />
     </div>
   );
