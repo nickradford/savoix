@@ -82,13 +82,14 @@ The application will be available at [http://localhost:8080](http://localhost:80
 
 ## Available Scripts
 
-| Command          | Description                  |
-| ---------------- | ---------------------------- |
-| `pnpm dev`       | Start development server     |
-| `pnpm build`     | Build for production         |
-| `pnpm start`     | Start production server      |
-| `pnpm typecheck` | Run TypeScript type checking |
-| `pnpm test`      | Run test suite               |
+| Command           | Description                                 |
+| ----------------- | ------------------------------------------- |
+| `pnpm dev`        | Start development server                    |
+| `pnpm build`      | Build for production                        |
+| `pnpm start`      | Start production server                     |
+| `pnpm typecheck`  | Run TypeScript type checking                |
+| `pnpm test`       | Run test suite                              |
+| `pnpm ci:check`   | Run the same typecheck and test steps as CI |
 
 ## Backend Architecture
 
@@ -131,3 +132,19 @@ The main runtime and service wiring lives under `server/effect/`. Route modules 
 - service-level tests with doubles for transcription and ffmpeg-dependent export logic
 
 The backend tests run against isolated temporary databases and recordings directories so they do not mutate your working data.
+
+## CI
+
+GitHub Actions runs the verification suite on every push and pull request via [.github/workflows/ci.yml](/Users/n/code/script-recorder-validator-d7e/.github/workflows/ci.yml).
+
+For a local pre-push check, run:
+
+```bash
+pnpm ci:check
+```
+
+To execute the GitHub Actions workflow locally, run:
+
+```bash
+npx @redwoodjs/agent-ci run --workflow .github/workflows/ci.yml
+```
